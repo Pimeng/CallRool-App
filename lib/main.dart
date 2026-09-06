@@ -119,6 +119,12 @@ extension AttendanceStatusUi on AttendanceStatus {
   };
 }
 
+bool _isAbsenceStatus(AttendanceStatus status) =>
+    status == AttendanceStatus.absent ||
+    status == AttendanceStatus.leave ||
+    status == AttendanceStatus.personalLeave ||
+    status == AttendanceStatus.sickLeave;
+
 class Person {
   Person({
     required this.id,
@@ -329,6 +335,20 @@ class _RollCallPageState extends State<RollCallPage>
                 ],
               ),
             ),
+          SimpleDialogOption(
+            onPressed: () =>
+                Navigator.pop(context, AttendanceStatus.unmarked),
+            child: Row(
+              children: [
+                Icon(
+                  AttendanceStatus.unmarked.icon,
+                  color: AttendanceStatus.unmarked.color,
+                ),
+                const SizedBox(width: 12),
+                const Text('重置'),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -932,7 +952,6 @@ class _RollCallPageState extends State<RollCallPage>
               for (final status in [
                 AttendanceStatus.present,
                 AttendanceStatus.absent,
-                AttendanceStatus.leave,
               ])
                 Padding(
                   padding: const EdgeInsets.only(left: 5),
@@ -1034,16 +1053,20 @@ class _PersonRow extends StatelessWidget {
                 ),
               ),
               if (!selectionMode)
-                for (final status in [
-                  AttendanceStatus.present,
-                  AttendanceStatus.absent,
-                  AttendanceStatus.leave,
-                ])
+              for (final status in [
+                AttendanceStatus.present,
+                AttendanceStatus.absent,
+              ])
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
                     child: _QuickStatusButton(
-                      status: status,
-                      active: person.status == status,
+                      status: status == AttendanceStatus.absent &&
+                              _isAbsenceStatus(person.status)
+                          ? person.status
+                          : status,
+                      active: status == AttendanceStatus.absent
+                          ? _isAbsenceStatus(person.status)
+                          : person.status == status,
                       showLabel: wide,
                       onTap: () => onStatus(status),
                     ),
