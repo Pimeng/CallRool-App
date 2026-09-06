@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/attendance.dart';
@@ -536,6 +537,44 @@ class _RollCallPageState extends State<RollCallPage>
     await _save();
   }
 
+  Future<void> _markUnmarkedAbsent() async {
+    final unmarkedCount = _count(AttendanceStatus.unmarked);
+    if (unmarkedCount == 0) {
+      _toast('没有未点名人员');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('将未点名人员标记为缺勤？'),
+        content: Text('共 $unmarkedCount 人，已有考勤状态的人员不会改变。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认标记'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    _invalidatePeopleCache();
+    setState(() {
+      for (final person in _people) {
+        if (person.status == AttendanceStatus.unmarked) {
+          person.status = AttendanceStatus.absent;
+        }
+      }
+    });
+    await _save();
+    _toast('已将 $unmarkedCount 人标记为缺勤');
+  }
+
   Future<void> _showImportDialog() async {
     final controller = TextEditingController();
     var names = <String>[];
@@ -647,6 +686,50 @@ class _RollCallPageState extends State<RollCallPage>
       mimeType: 'text/plain',
     );
     if (uri != null) _toast('名单已导出');
+  }
+
+  Future<void> _copyAttendanceSummary() async {
+    if (_people.isEmpty) return;
+
+    final present = <String>[];
+    final absent = <String>[];
+    final leave = <String>[];
+    final personalLeave = <String>[];
+    final sickLeave = <String>[];
+    for (final person in _people) {
+      switch (person.status) {
+        case AttendanceStatus.present:
+          present.add(person.name);
+        case AttendanceStatus.absent:
+          absent.add(person.name);
+        case AttendanceStatus.leave:
+          leave.add(person.name);
+        case AttendanceStatus.personalLeave:
+          personalLeave.add(person.name);
+        case AttendanceStatus.sickLeave:
+          sickLeave.add(person.name);
+        case AttendanceStatus.unmarked:
+          break;
+      }
+    }
+
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final timestamp =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${twoDigits(now.month)}-${twoDigits(now.day)} '
+        '${twoDigits(now.hour)}:${twoDigits(now.minute)}:${twoDigits(now.second)}';
+    final content = [
+      '$timestamp 考勤情况：',
+      '正常出勤：${present.join('、')}',
+      '缺勤：${absent.join('、')}',
+      '公假：${leave.join('、')}',
+      '事假：${personalLeave.join('、')}',
+      '病假：${sickLeave.join('、')}',
+    ].join('\n');
+
+    await Clipboard.setData(ClipboardData(text: content));
+    _toast('考勤情况已复制到剪贴板');
   }
 
   Future<void> _addPerson() async {
@@ -834,23 +917,45 @@ class _RollCallPageState extends State<RollCallPage>
               icon: const Icon(Icons.restart_alt_rounded),
             ),
           if (!_topSearchMode)
+            IconButton(
+              tooltip: '复制考勤情况',
+              onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
+              icon: const Icon(Icons.content_copy_rounded),
+            ),
+          if (!_topSearchMode)
             PopupMenuButton<String>(
               tooltip: '名单操作',
-              onSelected: (value) =>
-                  value == 'import' ? _showImportDialog() : _exportRoster(),
-              itemBuilder: (context) => const [
-                PopupMenuItem(
+              onSelected: (value) {
+                switch (value) {
+                  case 'import':
+                    _showImportDialog();
+                  case 'export':
+                    _exportRoster();
+                  case 'mark_unmarked_absent':
+                    _markUnmarkedAbsent();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
                   value: 'import',
                   child: ListTile(
                     leading: Icon(Icons.upload_file_rounded),
                     title: Text('导入名单'),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'export',
                   child: ListTile(
                     leading: Icon(Icons.download_rounded),
                     title: Text('导出名单'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'mark_unmarked_absent',
+                  enabled: _count(AttendanceStatus.unmarked) > 0,
+                  child: const ListTile(
+                    leading: Icon(Icons.assignment_late_outlined),
+                    title: Text('未点名全部标记为缺勤'),
                   ),
                 ),
               ],
