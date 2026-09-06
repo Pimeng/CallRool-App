@@ -1,12 +1,32 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+const _performanceDiagnostics = bool.fromEnvironment(
+  'ROLLCALL_PERF',
+  defaultValue: false,
+);
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode && _performanceDiagnostics) {
+    SchedulerBinding.instance.addTimingsCallback((timings) {
+      for (final timing in timings) {
+        if (timing.totalSpan >= const Duration(milliseconds: 50)) {
+          debugPrint(
+            '[rollcall][frame] '
+            'total=${timing.totalSpan.inMilliseconds}ms '
+            'build=${timing.buildDuration.inMilliseconds}ms '
+            'raster=${timing.rasterDuration.inMilliseconds}ms',
+          );
+        }
+      }
+    });
+  }
   runApp(const RollCallApp());
 }
 
@@ -17,6 +37,7 @@ class RollCallApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
       title: '点名册',
       theme: ThemeData(
         useMaterial3: true,
@@ -104,6 +125,13 @@ class Person {
   );
 }
 
+class _VisiblePerson {
+  const _VisiblePerson({required this.person, required this.number});
+
+  final Person person;
+  final int number;
+}
+
 enum RosterFilter { all, unmarked, present, absent, leave }
 
 class RollCallPage extends StatefulWidget {
@@ -113,12 +141,17 @@ class RollCallPage extends StatefulWidget {
   State<RollCallPage> createState() => _RollCallPageState();
 }
 
-class _RollCallPageState extends State<RollCallPage> {
+class _RollCallPageState extends State<RollCallPage>
+    with WidgetsBindingObserver {
   static const _storageKey = 'roll_call_people_v1';
   final _searchController = TextEditingController();
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
+  List<_VisiblePerson>? _visiblePeopleCache;
+  String _visiblePeopleCacheKeyword = '';
+  RosterFilter _visiblePeopleCacheFilter = RosterFilter.all;
+  Map<AttendanceStatus, int>? _statusCountsCache;
   bool _loading = true;
   bool _selectionMode = false;
   int _nextId = 1;
@@ -126,13 +159,30 @@ class _RollCallPageState extends State<RollCallPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!kDebugMode || !_performanceDiagnostics) return;
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return;
+    final view = views.first;
+    final logicalSize = view.physicalSize / view.devicePixelRatio;
+    debugPrint(
+      '[rollcall][window] '
+      'size=${logicalSize.width.toStringAsFixed(0)}x'
+      '${logicalSize.height.toStringAsFixed(0)} '
+      'dpr=${view.devicePixelRatio.toStringAsFixed(2)}',
+    );
   }
 
   Future<void> _load() async {
@@ -164,12 +214,32 @@ class _RollCallPageState extends State<RollCallPage> {
     );
   }
 
-  int _count(AttendanceStatus status) =>
-      _people.where((person) => person.status == status).length;
+  int _count(AttendanceStatus status) {
+    final cached = _statusCountsCache;
+    if (cached != null) return cached[status] ?? 0;
 
-  List<Person> get _visiblePeople {
+    final counts = <AttendanceStatus, int>{
+      for (final value in AttendanceStatus.values) value: 0,
+    };
+    for (final person in _people) {
+      counts[person.status] = counts[person.status]! + 1;
+    }
+    _statusCountsCache = counts;
+    return counts[status] ?? 0;
+  }
+
+  List<_VisiblePerson> get _visiblePeople {
     final keyword = _searchController.text.trim().toLowerCase();
-    return _people.where((person) {
+    final cached = _visiblePeopleCache;
+    if (cached != null &&
+        keyword == _visiblePeopleCacheKeyword &&
+        _filter == _visiblePeopleCacheFilter) {
+      return cached;
+    }
+
+    final visible = <_VisiblePerson>[];
+    for (var index = 0; index < _people.length; index++) {
+      final person = _people[index];
       final searched =
           keyword.isEmpty || person.name.toLowerCase().contains(keyword);
       final filtered = switch (_filter) {
@@ -179,8 +249,19 @@ class _RollCallPageState extends State<RollCallPage> {
         RosterFilter.absent => person.status == AttendanceStatus.absent,
         RosterFilter.leave => person.status == AttendanceStatus.leave,
       };
-      return searched && filtered;
-    }).toList();
+      if (searched && filtered) {
+        visible.add(_VisiblePerson(person: person, number: index + 1));
+      }
+    }
+    _visiblePeopleCacheKeyword = keyword;
+    _visiblePeopleCacheFilter = _filter;
+    _visiblePeopleCache = visible;
+    return visible;
+  }
+
+  void _invalidatePeopleCache() {
+    _visiblePeopleCache = null;
+    _statusCountsCache = null;
   }
 
   List<String> _parseNames(String text) {
@@ -202,6 +283,7 @@ class _RollCallPageState extends State<RollCallPage> {
   }
 
   void _setStatus(Person person, AttendanceStatus status) {
+    _invalidatePeopleCache();
     setState(
       () => person.status = person.status == status
           ? AttendanceStatus.unmarked
@@ -220,7 +302,7 @@ class _RollCallPageState extends State<RollCallPage> {
 
   void _selectAllVisible() {
     setState(() {
-      final ids = _visiblePeople.map((person) => person.id).toSet();
+      final ids = _visiblePeople.map((item) => item.person.id).toSet();
       if (ids.isNotEmpty && ids.every(_selected.contains)) {
         _selected.removeAll(ids);
       } else {
@@ -232,6 +314,7 @@ class _RollCallPageState extends State<RollCallPage> {
 
   void _batchSetStatus(AttendanceStatus status) {
     if (_selected.isEmpty) return;
+    _invalidatePeopleCache();
     setState(() {
       for (final person in _people.where(
         (person) => _selected.contains(person.id),
@@ -264,6 +347,7 @@ class _RollCallPageState extends State<RollCallPage> {
       ),
     );
     if (confirmed != true) return;
+    _invalidatePeopleCache();
     setState(() {
       for (final person in _people) {
         person.status = AttendanceStatus.unmarked;
@@ -354,6 +438,7 @@ class _RollCallPageState extends State<RollCallPage> {
       ),
     );
     if (action == null || names.isEmpty) return;
+    _invalidatePeopleCache();
     setState(() {
       if (action == 'replace') {
         _people.clear();
@@ -416,6 +501,7 @@ class _RollCallPageState extends State<RollCallPage> {
       _toast('名单中已有这个名字');
       return;
     }
+    _invalidatePeopleCache();
     setState(() => _people.add(Person(id: _nextId++, name: name)));
     await _save();
   }
@@ -440,6 +526,7 @@ class _RollCallPageState extends State<RollCallPage> {
       ),
     );
     if (confirmed != true) return;
+    _invalidatePeopleCache();
     setState(() {
       _people.removeWhere((person) => _selected.contains(person.id));
       _selected.clear();
@@ -630,7 +717,10 @@ class _RollCallPageState extends State<RollCallPage> {
     ];
     final search = TextField(
       controller: _searchController,
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) {
+        _invalidatePeopleCache();
+        setState(() {});
+      },
       decoration: InputDecoration(
         hintText: '搜索姓名',
         prefixIcon: const Icon(Icons.search_rounded),
@@ -639,6 +729,7 @@ class _RollCallPageState extends State<RollCallPage> {
             : IconButton(
                 onPressed: () {
                   _searchController.clear();
+                  _invalidatePeopleCache();
                   setState(() {});
                 },
                 icon: const Icon(Icons.close_rounded),
@@ -653,7 +744,10 @@ class _RollCallPageState extends State<RollCallPage> {
             FilterChip(
               label: Text(item.$2),
               selected: _filter == item.$1,
-              onSelected: (_) => setState(() => _filter = item.$1),
+              onSelected: (_) {
+                _invalidatePeopleCache();
+                setState(() => _filter = item.$1);
+              },
             ),
             const SizedBox(width: 6),
           ],
@@ -707,13 +801,13 @@ class _RollCallPageState extends State<RollCallPage> {
       itemCount: visible.length,
       separatorBuilder: (_, _) => const SizedBox(height: 7),
       itemBuilder: (context, index) => _PersonRow(
-        person: visible[index],
-        number: _people.indexOf(visible[index]) + 1,
-        selected: _selected.contains(visible[index].id),
+        person: visible[index].person,
+        number: visible[index].number,
+        selected: _selected.contains(visible[index].person.id),
         selectionMode: _selectionMode,
         wide: isWide,
-        onToggleSelection: () => _toggleSelection(visible[index]),
-        onStatus: (status) => _setStatus(visible[index], status),
+        onToggleSelection: () => _toggleSelection(visible[index].person),
+        onStatus: (status) => _setStatus(visible[index].person, status),
       ),
     );
   }
@@ -884,7 +978,10 @@ class _QuickStatusButton extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          width: showLabel ? null : 40,
+          // Keep both animation endpoints finite. Animating from `null`
+          // (unbounded/content-sized) to a fixed width causes
+          // BoxConstraints.lerp to assert during window resizing.
+          width: showLabel ? 76 : 40,
           height: 40,
           padding: EdgeInsets.symmetric(horizontal: showLabel ? 10 : 0),
           decoration: BoxDecoration(
