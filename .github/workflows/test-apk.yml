@@ -31,16 +31,18 @@ jobs:
         run: flutter test
 
       - name: Build test APK
-        run: flutter build apk --debug
+        run: flutter build apk --release
+        env:
+          ORG_GRADLE_PROJECT_testPackage: "true"
 
       - name: Verify test package name
         run: |
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
-          "$AAPT" dump badging build/app/outputs/flutter-apk/app-debug.apk \
+          "$AAPT" dump badging build/app/outputs/flutter-apk/app-release.apk \
             | grep -F "package: name='wtf.pimeng.callrool.test'"
 
       - name: Rename APK
-        run: mv build/app/outputs/flutter-apk/app-debug.apk CallRool-dark-mode-test.apk
+        run: mv build/app/outputs/flutter-apk/app-release.apk CallRool-dark-mode-test.apk
 
       - name: Upload test APK
         uses: actions/upload-artifact@v4
