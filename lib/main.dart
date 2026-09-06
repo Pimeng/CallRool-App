@@ -108,6 +108,7 @@ class _RollCallPageState extends State<RollCallPage>
     '郑十',
   ];
   final _searchController = TextEditingController();
+  final _topSearchFocusNode = FocusNode();
   final _rosterScrollController = ScrollController();
   final _overviewKey = GlobalKey();
   final List<Person> _people = [];
@@ -121,6 +122,9 @@ class _RollCallPageState extends State<RollCallPage>
   bool _selectionMode = false;
   bool _overviewCollapsed = false;
   bool _topSearchMode = false;
+  bool _keepOverviewHidden = false;
+  double _innerScrollOffset = 0;
+  ScrollPosition? _innerScrollPosition;
   int _nextId = 1;
 
   @override
@@ -138,11 +142,21 @@ class _RollCallPageState extends State<RollCallPage>
       ..removeListener(_handleRosterScroll)
       ..dispose();
     _searchController.dispose();
+    _topSearchFocusNode.dispose();
     super.dispose();
   }
 
   void _handleRosterScroll() {
     if (!_rosterScrollController.hasClients || !mounted) return;
+    if (_keepOverviewHidden) {
+      if (_rosterScrollController.offset <= 1) {
+        setState(() {
+          _keepOverviewHidden = false;
+          _overviewCollapsed = false;
+        });
+      }
+      return;
+    }
     final overviewContext = _overviewKey.currentContext;
     final overviewRenderObject = overviewContext?.findRenderObject();
     if (overviewRenderObject is! RenderBox) return;
@@ -155,12 +169,55 @@ class _RollCallPageState extends State<RollCallPage>
 
   void _openTopSearch() {
     setState(() => _topSearchMode = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_topSearchMode && mounted) {
+        _topSearchFocusNode.requestFocus();
+      }
+    });
   }
 
   void _closeTopSearch() {
     _searchController.clear();
+    _topSearchFocusNode.unfocus();
     _invalidatePeopleCache();
-    setState(() => _topSearchMode = false);
+    final keepOverviewHidden = _innerScrollOffset > 1 || _overviewCollapsed;
+    setState(() {
+      _topSearchMode = false;
+      _keepOverviewHidden = keepOverviewHidden;
+      _overviewCollapsed = keepOverviewHidden;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final position = _innerScrollPosition;
+      if (position == null || !position.hasContentDimensions) return;
+      final targetOffset = _innerScrollOffset.clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
+      if ((position.pixels - targetOffset).abs() > 0.5) {
+        position.jumpTo(targetOffset);
+      }
+      if (targetOffset <= 1 && mounted) {
+        setState(() {
+          _keepOverviewHidden = false;
+          _overviewCollapsed = false;
+        });
+      }
+    });
+  }
+
+  bool _handleInnerScroll(ScrollNotification notification) {
+    if (notification.metrics.axis == Axis.vertical) {
+      _innerScrollOffset = notification.metrics.pixels;
+      _innerScrollPosition = Scrollable.maybeOf(notification.context!)
+          ?.position;
+      if (_keepOverviewHidden && _innerScrollOffset <= 1 && mounted) {
+        setState(() {
+          _keepOverviewHidden = false;
+          _overviewCollapsed = false;
+        });
+      }
+    }
+    return false;
   }
 
   @override
@@ -642,50 +699,92 @@ class _RollCallPageState extends State<RollCallPage>
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 62,
-        titleSpacing: 16,
+        titleSpacing: _topSearchMode ? 0 : 16,
         scrolledUnderElevation: 0,
         backgroundColor: const Color(0xFFF5F7F5),
-        title: _topSearchMode
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                onChanged: (_) {
-                  _invalidatePeopleCache();
-                  setState(() {});
-                },
-                decoration: const InputDecoration(
-                  hintText: '搜索姓名',
-                  prefixIcon: Icon(Icons.search_rounded),
-                  isDense: true,
-                ),
+        leading: _topSearchMode
+            ? const SizedBox(
+                width: 48,
+                child: Center(child: Icon(Icons.search_rounded)),
               )
-            : const Row(
-                mainAxisSize: MainAxisSize.min,
+            : null,
+        title: LayoutBuilder(
+          builder: (context, constraints) => TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: _topSearchMode ? 1 : 0),
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOutCubic,
+            builder: (context, progress, child) {
+              return Stack(
+                alignment: Alignment.centerLeft,
                 children: [
-                  AppMark(),
-                  SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '快捷考勤',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
+                  Opacity(
+                    opacity: 1 - progress,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppMark(),
+                        SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '快捷考勤',
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              '班委快捷考勤APP',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF718078),
+                              ),
+                            ),
+                          ],
                         ),
+                      ],
+                    ),
+                  ),
+                  ClipRect(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: progress,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: child,
                       ),
-                      Text(
-                        '班委快捷考勤APP',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF718078),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
+              );
+            },
+            child: TextField(
+              controller: _searchController,
+              focusNode: _topSearchFocusNode,
+              onChanged: (_) {
+                _invalidatePeopleCache();
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: '搜索姓名',
+                isDense: true,
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: '清除搜索',
+                        onPressed: () {
+                          _searchController.clear();
+                          _invalidatePeopleCache();
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
               ),
+            ),
+          ),
+        ),
         actions: [
           if (_topSearchMode)
             IconButton(
@@ -699,13 +798,12 @@ class _RollCallPageState extends State<RollCallPage>
               onPressed: _openTopSearch,
               icon: const Icon(Icons.search_rounded),
             ),
-          IconButton(
-            tooltip: '重置考勤',
-            onPressed: _topSearchMode || _people.isEmpty
-                ? null
-                : _resetAttendance,
-            icon: const Icon(Icons.restart_alt_rounded),
-          ),
+          if (!_topSearchMode)
+            IconButton(
+              tooltip: '重置考勤',
+              onPressed: _people.isEmpty ? null : _resetAttendance,
+              icon: const Icon(Icons.restart_alt_rounded),
+            ),
           if (!_topSearchMode)
             PopupMenuButton<String>(
               tooltip: '名单操作',
@@ -750,7 +848,7 @@ class _RollCallPageState extends State<RollCallPage>
                         SliverToBoxAdapter(
                           child: Column(
                             key: _overviewKey,
-                            children: _topSearchMode
+                            children: _topSearchMode || _keepOverviewHidden
                                 ? const []
                                 : [
                                     const SizedBox(height: 14),
@@ -976,18 +1074,21 @@ class _RollCallPageState extends State<RollCallPage>
         child: Text('没有匹配的人员', style: TextStyle(color: Color(0xFF718078))),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 82),
-      itemCount: visible.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 7),
-      itemBuilder: (context, index) => PersonRow(
-        person: visible[index].person,
-        number: visible[index].number,
-        selected: _selected.contains(visible[index].person.id),
-        selectionMode: _selectionMode,
-        wide: isWide,
-        onToggleSelection: () => _toggleSelection(visible[index].person),
-        onStatus: (status) => _setStatus(visible[index].person, status),
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleInnerScroll,
+      child: ListView.separated(
+        padding: const EdgeInsets.only(bottom: 82),
+        itemCount: visible.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 7),
+        itemBuilder: (context, index) => PersonRow(
+          person: visible[index].person,
+          number: visible[index].number,
+          selected: _selected.contains(visible[index].person.id),
+          selectionMode: _selectionMode,
+          wide: isWide,
+          onToggleSelection: () => _toggleSelection(visible[index].person),
+          onStatus: (status) => _setStatus(visible[index].person, status),
+        ),
       ),
     );
   }
