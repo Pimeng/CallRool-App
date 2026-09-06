@@ -75,7 +75,14 @@ class RollCallApp extends StatelessWidget {
   }
 }
 
-enum AttendanceStatus { unmarked, present, absent, leave }
+enum AttendanceStatus {
+  unmarked,
+  present,
+  absent,
+  leave,
+  personalLeave,
+  sickLeave,
+}
 
 extension AttendanceStatusUi on AttendanceStatus {
   String get label => switch (this) {
@@ -83,24 +90,32 @@ extension AttendanceStatusUi on AttendanceStatus {
     AttendanceStatus.present => '正常',
     AttendanceStatus.absent => '缺勤',
     AttendanceStatus.leave => '公假',
+    AttendanceStatus.personalLeave => '事假',
+    AttendanceStatus.sickLeave => '病假',
   };
   Color get color => switch (this) {
     AttendanceStatus.unmarked => const Color(0xFF77817B),
     AttendanceStatus.present => const Color(0xFF198754),
     AttendanceStatus.absent => const Color(0xFFD14C3E),
     AttendanceStatus.leave => const Color(0xFFDA8610),
+    AttendanceStatus.personalLeave => const Color(0xFF8B5FBF),
+    AttendanceStatus.sickLeave => const Color(0xFF3D7DB8),
   };
   Color get softColor => switch (this) {
     AttendanceStatus.unmarked => const Color(0xFFF0F2F0),
     AttendanceStatus.present => const Color(0xFFE6F5EC),
     AttendanceStatus.absent => const Color(0xFFFCEAE7),
     AttendanceStatus.leave => const Color(0xFFFFF3DD),
+    AttendanceStatus.personalLeave => const Color(0xFFF2E9FA),
+    AttendanceStatus.sickLeave => const Color(0xFFE6F1FB),
   };
   IconData get icon => switch (this) {
     AttendanceStatus.unmarked => Icons.remove_rounded,
     AttendanceStatus.present => Icons.check_rounded,
     AttendanceStatus.absent => Icons.close_rounded,
     AttendanceStatus.leave => Icons.beach_access_rounded,
+    AttendanceStatus.personalLeave => Icons.person_outline_rounded,
+    AttendanceStatus.sickLeave => Icons.local_hospital_outlined,
   };
 }
 
@@ -136,7 +151,7 @@ class _VisiblePerson {
   final int number;
 }
 
-enum RosterFilter { all, unmarked, present, absent, leave }
+enum RosterFilter { all, unmarked, present, absent }
 
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
@@ -232,6 +247,11 @@ class _RollCallPageState extends State<RollCallPage>
     return counts[status] ?? 0;
   }
 
+  int _countAbsentTypes() => _people
+      .where((person) => person.status != AttendanceStatus.unmarked)
+      .where((person) => person.status != AttendanceStatus.present)
+      .length;
+
   List<_VisiblePerson> get _visiblePeople {
     final keyword = _searchController.text.trim().toLowerCase();
     final cached = _visiblePeopleCache;
@@ -250,8 +270,9 @@ class _RollCallPageState extends State<RollCallPage>
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
         RosterFilter.present => person.status == AttendanceStatus.present,
-        RosterFilter.absent => person.status == AttendanceStatus.absent,
-        RosterFilter.leave => person.status == AttendanceStatus.leave,
+        RosterFilter.absent =>
+          person.status != AttendanceStatus.unmarked &&
+              person.status != AttendanceStatus.present,
       };
       if (searched && filtered) {
         visible.add(_VisiblePerson(person: person, number: index + 1));
@@ -286,7 +307,39 @@ class _RollCallPageState extends State<RollCallPage>
       );
   }
 
-  void _setStatus(Person person, AttendanceStatus status) {
+  Future<AttendanceStatus?> _chooseAbsenceType() async {
+    return showDialog<AttendanceStatus>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('选择缺勤类型'),
+        children: [
+          for (final status in [
+            AttendanceStatus.absent,
+            AttendanceStatus.leave,
+            AttendanceStatus.personalLeave,
+            AttendanceStatus.sickLeave,
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, status),
+              child: Row(
+                children: [
+                  Icon(status.icon, color: status.color),
+                  const SizedBox(width: 12),
+                  Text(status.label),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _setStatus(Person person, AttendanceStatus status) async {
+    if (status == AttendanceStatus.absent) {
+      final selected = await _chooseAbsenceType();
+      if (selected == null || !mounted) return;
+      status = selected;
+    }
     _invalidatePeopleCache();
     setState(
       () => person.status = person.status == status
@@ -304,20 +357,20 @@ class _RollCallPageState extends State<RollCallPage>
     });
   }
 
-  void _selectAllVisible() {
+  void _enterSelectionMode() {
     setState(() {
-      final ids = _visiblePeople.map((item) => item.person.id).toSet();
-      if (ids.isNotEmpty && ids.every(_selected.contains)) {
-        _selected.removeAll(ids);
-      } else {
-        _selected.addAll(ids);
-      }
-      _selectionMode = _selected.isNotEmpty;
+      _selected.clear();
+      _selectionMode = true;
     });
   }
 
-  void _batchSetStatus(AttendanceStatus status) {
+  void _batchSetStatus(AttendanceStatus status) async {
     if (_selected.isEmpty) return;
+    if (status == AttendanceStatus.absent) {
+      final selected = await _chooseAbsenceType();
+      if (selected == null || !mounted) return;
+      status = selected;
+    }
     _invalidatePeopleCache();
     setState(() {
       for (final person in _people.where(
@@ -344,6 +397,13 @@ class _RollCallPageState extends State<RollCallPage>
             child: const Text('取消'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(96, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('确认重置'),
           ),
@@ -523,6 +583,13 @@ class _RollCallPageState extends State<RollCallPage>
             child: const Text('取消'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(76, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除'),
           ),
@@ -653,15 +720,9 @@ class _RollCallPageState extends State<RollCallPage>
       ),
       (
         '缺勤',
-        _count(AttendanceStatus.absent),
+        _countAbsentTypes(),
         AttendanceStatus.absent.color,
         Icons.cancel_rounded,
-      ),
-      (
-        '公假',
-        _count(AttendanceStatus.leave),
-        AttendanceStatus.leave.color,
-        Icons.beach_access_rounded,
       ),
     ];
     return GridView.builder(
@@ -736,7 +797,6 @@ class _RollCallPageState extends State<RollCallPage>
       (RosterFilter.unmarked, '未点名'),
       (RosterFilter.present, '正常'),
       (RosterFilter.absent, '缺勤'),
-      (RosterFilter.leave, '公假'),
     ];
     final search = TextField(
       controller: _searchController,
@@ -792,7 +852,7 @@ class _RollCallPageState extends State<RollCallPage>
           const SizedBox(width: 12),
           Expanded(child: chips),
           TextButton.icon(
-            onPressed: _selectAllVisible,
+            onPressed: _enterSelectionMode,
             icon: const Icon(Icons.checklist_rounded),
             label: const Text('批量'),
           ),
@@ -808,7 +868,7 @@ class _RollCallPageState extends State<RollCallPage>
             Expanded(child: chips),
             IconButton(
               tooltip: '批量选择',
-              onPressed: _selectAllVisible,
+              onPressed: _enterSelectionMode,
               icon: const Icon(Icons.checklist_rounded),
             ),
           ],
@@ -869,7 +929,11 @@ class _RollCallPageState extends State<RollCallPage>
                 ),
               ),
               const Spacer(),
-              for (final status in AttendanceStatus.values.skip(1))
+              for (final status in [
+                AttendanceStatus.present,
+                AttendanceStatus.absent,
+                AttendanceStatus.leave,
+              ])
                 Padding(
                   padding: const EdgeInsets.only(left: 5),
                   child: IconButton.filledTonal(
@@ -970,7 +1034,11 @@ class _PersonRow extends StatelessWidget {
                 ),
               ),
               if (!selectionMode)
-                for (final status in AttendanceStatus.values.skip(1))
+                for (final status in [
+                  AttendanceStatus.present,
+                  AttendanceStatus.absent,
+                  AttendanceStatus.leave,
+                ])
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
                     child: _QuickStatusButton(
