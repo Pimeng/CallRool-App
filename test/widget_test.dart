@@ -59,7 +59,7 @@ void main() {
   testWidgets('首次启动使用内置名单', (tester) async {
     await _pumpApp(tester);
 
-    expect(find.text('快捷考勤'), findsOneWidget);
+    expect(find.text('快捷考勤喵'), findsOneWidget);
     expect(find.text('刘一'), findsOneWidget);
     expect(find.text('名单还是空的'), findsNothing);
 

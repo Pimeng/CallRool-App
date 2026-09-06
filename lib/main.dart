@@ -28,7 +28,7 @@ class RollCallApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
-      title: '快捷考勤',
+      title: '快捷考勤喵',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B45)),
@@ -1180,7 +1180,7 @@ class _RollCallPageState extends State<RollCallPage>
                                           MainAxisAlignment.center,
                                       children: [
                                         const Text(
-                                          '快捷考勤',
+                                          '快捷考勤喵',
                                           style: TextStyle(
                                             fontSize: 19,
                                             fontWeight: FontWeight.w800,
