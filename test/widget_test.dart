@@ -18,6 +18,15 @@ Future<void> _pumpApp(WidgetTester tester, {Size? size}) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpDarkApp(WidgetTester tester) async {
+  tester.binding.platformDispatcher.platformBrightnessTestValue =
+      Brightness.dark;
+  addTearDown(
+    tester.binding.platformDispatcher.clearPlatformBrightnessTestValue,
+  );
+  await _pumpApp(tester);
+}
+
 String _scheduleForToday() {
   final now = DateTime.now();
   final monday = DateTime(
@@ -56,6 +65,24 @@ String _scheduleForToday() {
 }
 
 void main() {
+  testWidgets('跟随系统启用深色主题', (tester) async {
+    await _pumpDarkApp(tester);
+
+    final context = tester.element(find.byType(Scaffold));
+    final theme = Theme.of(context);
+    expect(theme.brightness, Brightness.dark);
+    expect(theme.scaffoldBackgroundColor, const Color(0xFF0F1511));
+
+    final personRow = find.ancestor(
+      of: find.text('刘一'),
+      matching: find.byType(PersonRow),
+    );
+    final rowMaterial = tester.widget<Material>(
+      find.descendant(of: personRow, matching: find.byType(Material)).first,
+    );
+    expect(rowMaterial.color, isNot(Colors.white));
+  });
+
   testWidgets('首次启动使用内置名单', (tester) async {
     await _pumpApp(tester);
 

@@ -24,17 +24,19 @@ class PersonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final hasStatus = person.status != AttendanceStatus.unmarked;
     final rowColor = selected
-        ? const Color(0xFFE7F3EB)
+        ? colorScheme.primaryContainer
         : hasStatus
-        ? person.status.softColor
-        : Colors.white;
+        ? person.status.adaptiveSoftColor(context)
+        : theme.cardTheme.color ?? colorScheme.surface;
     final borderColor = selected
-        ? const Color(0xFF78AC8C)
+        ? colorScheme.primary.withValues(alpha: .65)
         : hasStatus
-        ? person.status.color.withValues(alpha: .55)
-        : const Color(0xFFE3E9E4);
+        ? person.status.adaptiveColor(context).withValues(alpha: .55)
+        : theme.dividerColor;
 
     return Material(
       color: rowColor,
@@ -57,9 +59,9 @@ class PersonRow extends StatelessWidget {
                 CircleAvatar(
                   radius: 20,
                   backgroundColor: hasStatus
-                      ? Colors.white.withValues(alpha: .82)
-                      : person.status.softColor,
-                  foregroundColor: person.status.color,
+                      ? colorScheme.surface.withValues(alpha: .82)
+                      : person.status.adaptiveSoftColor(context),
+                  foregroundColor: person.status.adaptiveColor(context),
                   child: Text(
                     person.name.characters.first,
                     style: const TextStyle(fontWeight: FontWeight.w800),
@@ -84,9 +86,9 @@ class PersonRow extends StatelessWidget {
                       children: [
                         Text(
                           '第 $number 号',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF66736B),
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(width: 5),
@@ -96,14 +98,14 @@ class PersonRow extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: person.status.softColor,
+                            color: person.status.adaptiveSoftColor(context),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             person.status.label,
                             style: TextStyle(
                               fontSize: 11,
-                              color: person.status.color,
+                              color: person.status.adaptiveColor(context),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -170,49 +172,56 @@ class QuickStatusButton extends StatelessWidget {
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: label ?? status.label,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        width: showLabel ? 76 : 40,
-        height: 40,
-        padding: EdgeInsets.symmetric(horizontal: showLabel ? 10 : 0),
-        decoration: BoxDecoration(
-          color: active ? status.softColor : const Color(0xFFF4F6F4),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final statusColor = status.adaptiveColor(context);
+    return Tooltip(
+      message: label ?? status.label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: showLabel ? 76 : 40,
+          height: 40,
+          padding: EdgeInsets.symmetric(horizontal: showLabel ? 10 : 0),
+          decoration: BoxDecoration(
             color: active
-                ? status.color.withValues(alpha: .45)
-                : const Color(0xFFE5E9E6),
+                ? status.adaptiveSoftColor(context)
+                : colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: active
+                  ? statusColor.withValues(alpha: .45)
+                  : theme.dividerColor,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon ?? status.icon,
+                size: 19,
+                color: active ? statusColor : colorScheme.onSurfaceVariant,
+              ),
+              if (showLabel) ...[
+                const SizedBox(width: 5),
+                Text(
+                  label ?? status.label,
+                  style: TextStyle(
+                    color: active ? statusColor : colorScheme.onSurfaceVariant,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon ?? status.icon,
-              size: 19,
-              color: active ? status.color : const Color(0xFF738078),
-            ),
-            if (showLabel) ...[
-              const SizedBox(width: 5),
-              Text(
-                label ?? status.label,
-                style: TextStyle(
-                  color: active ? status.color : const Color(0xFF56625B),
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Displays absence-related actions in a popup anchored to this button.
@@ -247,7 +256,7 @@ class AbsenceStatusButton extends StatelessWidget {
           return IconButton.filledTonal(
             tooltip: '选择缺勤类型',
             onPressed: () => _showMenu(buttonContext),
-            icon: Icon(status.icon, color: status.color),
+            icon: Icon(status.icon, color: status.adaptiveColor(context)),
           );
         }
 
@@ -319,11 +328,11 @@ class AbsenceStatusButton extends StatelessWidget {
           child: Material(
             key: const ValueKey('absence-status-menu'),
             elevation: 0,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surfaceContainer,
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Color(0xFFDDE4DF)),
+              side: BorderSide(color: Theme.of(context).dividerColor),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -335,7 +344,7 @@ class AbsenceStatusButton extends StatelessWidget {
                       height: 48,
                       child: Ink(
                         color: option == status && active
-                            ? option.softColor
+                            ? option.adaptiveSoftColor(context)
                             : Colors.transparent,
                         child: InkWell(
                           onTap: () => Navigator.of(context).pop(option),
@@ -346,7 +355,7 @@ class AbsenceStatusButton extends StatelessWidget {
                                 Icon(
                                   option.icon,
                                   size: 20,
-                                  color: option.color,
+                                  color: option.adaptiveColor(context),
                                 ),
                                 const SizedBox(width: 11),
                                 Expanded(
@@ -363,7 +372,7 @@ class AbsenceStatusButton extends StatelessWidget {
                                   Icon(
                                     Icons.check_rounded,
                                     size: 19,
-                                    color: option.color,
+                                    color: option.adaptiveColor(context),
                                   ),
                               ],
                             ),
@@ -429,13 +438,13 @@ class EmptyState extends StatelessWidget {
                     width: 68,
                     height: 68,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE2F1E8),
+                      color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(21),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.format_list_bulleted_add,
                       size: 33,
-                      color: Color(0xFF176B45),
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -444,9 +453,11 @@ class EmptyState extends StatelessWidget {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     '一行一个名字，简单直接。',
-                    style: TextStyle(color: Color(0xFF718078)),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
@@ -467,13 +478,20 @@ class EmptyState extends StatelessWidget {
 class AppMark extends StatelessWidget {
   const AppMark({super.key});
   @override
-  Widget build(BuildContext context) => Container(
-    width: 35,
-    height: 35,
-    decoration: BoxDecoration(
-      color: const Color(0xFF176B45),
-      borderRadius: BorderRadius.circular(11),
-    ),
-    child: const Icon(Icons.how_to_reg_rounded, color: Colors.white, size: 21),
-  );
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 35,
+      height: 35,
+      decoration: BoxDecoration(
+        color: colorScheme.primary,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Icon(
+        Icons.how_to_reg_rounded,
+        color: colorScheme.onPrimary,
+        size: 21,
+      ),
+    );
+  }
 }
