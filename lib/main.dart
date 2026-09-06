@@ -705,6 +705,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Widget _buildStats() {
+    final availableWidth = MediaQuery.sizeOf(context).width - 28;
     final isWide = MediaQuery.sizeOf(context).width >= 560;
     final items = [
       (
@@ -737,7 +738,7 @@ class _RollCallPageState extends State<RollCallPage>
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: isWide ? 4 : 2,
-        childAspectRatio: isWide ? 2.35 : 2.05,
+        childAspectRatio: isWide ? 2.35 : (availableWidth >= 480 ? 4.0 : 2.6),
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
