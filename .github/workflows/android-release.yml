@@ -1,0 +1,150 @@
+name: Android Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.47.2
+  GRADLE_OPTS: -Dorg.gradle.caching=true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Check build number
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_version="$(sed -nE 's/^version:[[:space:]]*([^[:space:]#]+).*/\1/p' pubspec.yaml | head -n 1)"
+          if [[ ! "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+            echo "pubspec.yaml version must use the x.y.z+build format." >&2
+            exit 1
+          fi
+
+          current_build="${current_version##*+}"
+          previous_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          previous_build=""
+
+          if [[ -n "$previous_tag" ]]; then
+            previous_version="$(git show "${previous_tag}:pubspec.yaml" | sed -nE 's/^version:[[:space:]]*([^[:space:]#]+).*/\1/p' | head -n 1)"
+            if [[ ! "$previous_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+              echo "The pubspec.yaml at $previous_tag has no valid x.y.z+build version." >&2
+              exit 1
+            fi
+            previous_build="${previous_version##*+}"
+          fi
+
+          if [[ -z "$previous_tag" || "$current_build" != "$previous_build" ]]; then
+            should_release=true
+          else
+            should_release=false
+          fi
+
+          {
+            echo "version=$current_version"
+            echo "tag=v$current_version"
+            echo "previous_tag=$previous_tag"
+            echo "previous_build=$previous_build"
+            echo "current_build=$current_build"
+            echo "should_release=$should_release"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Report unchanged build number
+        if: steps.version.outputs.should_release != 'true'
+        run: |
+          echo "Build number +${{ steps.version.outputs.current_build }} matches ${{ steps.version.outputs.previous_tag }}; skipping release."
+
+      - name: Install dependencies
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter pub get
+
+      - name: Analyze
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter analyze
+
+      - name: Test
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter test
+
+      - name: Build split APKs
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter build apk --release --split-per-abi
+
+      - name: Stage split APKs
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            abi="${apk##*/app-}"
+            abi="${abi%-release.apk}"
+            cp "$apk" "release-artifacts/CallRool-${{ steps.version.outputs.version }}-$abi.apk"
+          done
+
+      - name: Build universal APK
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter build apk --release
+
+      - name: Stage universal APK
+        if: steps.version.outputs.should_release == 'true'
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "release-artifacts/CallRool-${{ steps.version.outputs.version }}-universal.apk"
+
+      - name: Prepare release notes
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_tag="${{ steps.version.outputs.previous_tag }}"
+          if [[ -n "$previous_tag" ]]; then
+            git log --reverse --format='%B%n' "$previous_tag..$GITHUB_SHA" > release-notes.md
+          else
+            git log -1 --format='%B' "$GITHUB_SHA" > release-notes.md
+          fi
+
+      - name: Publish GitHub Release
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            release-artifacts/*.apk \
+            --target "$GITHUB_SHA" \
+            --title "快捷考勤喵 ${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md
