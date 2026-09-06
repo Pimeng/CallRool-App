@@ -65,13 +65,13 @@ class _WakeUpScheduleDialogState extends State<WakeUpScheduleDialog> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7F3EB),
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   widget.currentScheduleLabel!,
-                  style: const TextStyle(
-                    color: Color(0xFF176B45),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

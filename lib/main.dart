@@ -12,6 +12,7 @@ import 'models/attendance.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
 import 'services/wakeup_schedule_service.dart';
+import 'theme/app_theme.dart';
 import 'widgets/attendance_widgets.dart';
 import 'widgets/wakeup_schedule_dialog.dart';
 
@@ -29,37 +30,9 @@ class RollCallApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
       title: '快捷考勤喵',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B45)),
-        scaffoldBackgroundColor: const Color(0xFFF5F7F5),
-        fontFamily: 'Microsoft YaHei',
-        cardTheme: const CardThemeData(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          color: Colors.white,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 13,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFE1E7E2)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF4E9A70), width: 1.5),
-          ),
-        ),
-      ),
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       home: const RollCallPage(),
     );
   }
@@ -107,10 +80,28 @@ class _LongPressReorderableDragStartListener
 
   @override
   MultiDragGestureRecognizer createRecognizer() {
-    return DelayedMultiDragGestureRecognizer(
+    return _HapticDelayedMultiDragGestureRecognizer(
       delay: const Duration(milliseconds: 800),
       debugOwner: this,
     );
+  }
+}
+
+class _HapticDelayedMultiDragGestureRecognizer
+    extends DelayedMultiDragGestureRecognizer {
+  _HapticDelayedMultiDragGestureRecognizer({
+    required super.delay,
+    super.debugOwner,
+  });
+
+  @override
+  void acceptGesture(int pointer) {
+    super.acceptGesture(pointer);
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      HapticFeedback.selectionClick();
+    }
   }
 }
 
@@ -289,8 +280,9 @@ class _RollCallPageState extends State<RollCallPage>
   bool _handleInnerScroll(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
       _innerScrollOffset = notification.metrics.pixels;
-      _innerScrollPosition = Scrollable.maybeOf(notification.context!)
-          ?.position;
+      _innerScrollPosition = Scrollable.maybeOf(
+        notification.context!,
+      )?.position;
       if (_keepOverviewHidden && _innerScrollOffset <= 1 && mounted) {
         setState(() {
           _keepOverviewHidden = false;
@@ -739,7 +731,9 @@ class _RollCallPageState extends State<RollCallPage>
                       const Spacer(),
                       Text(
                         '${names.length} 人',
-                        style: const TextStyle(color: Color(0xFF66736B)),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1138,7 +1132,7 @@ class _RollCallPageState extends State<RollCallPage>
         toolbarHeight: 62,
         titleSpacing: _topSearchMode ? 0 : 16,
         scrolledUnderElevation: 0,
-        backgroundColor: const Color(0xFFF5F7F5),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         leading: _topSearchMode
             ? const SizedBox(
                 width: 48,
@@ -1190,9 +1184,11 @@ class _RollCallPageState extends State<RollCallPage>
                                           '上次修改：$_lastModifiedLabel',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            color: Color(0xFF718078),
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                           ),
                                         ),
                                       ],
@@ -1354,7 +1350,9 @@ class _RollCallPageState extends State<RollCallPage>
                             height: 52,
                             child: SizedBox.expand(
                               child: ColoredBox(
-                                color: const Color(0xFFF5F7F5),
+                                color: Theme.of(
+                                  context,
+                                ).scaffoldBackgroundColor,
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 2,
@@ -1390,25 +1388,25 @@ class _RollCallPageState extends State<RollCallPage>
       (
         '未点名',
         '${_count(AttendanceStatus.unmarked)}/${_people.length}',
-        AttendanceStatus.unmarked.color,
+        AttendanceStatus.unmarked.adaptiveColor(context),
         Icons.pending_actions_rounded,
       ),
       (
         '正常',
         _count(AttendanceStatus.present),
-        AttendanceStatus.present.color,
+        AttendanceStatus.present.adaptiveColor(context),
         Icons.check_circle_rounded,
       ),
       (
         '缺勤',
         _countAbsentTypes(),
-        AttendanceStatus.absent.color,
+        AttendanceStatus.absent.adaptiveColor(context),
         Icons.cancel_rounded,
       ),
       (
         '请假',
         _countLeaveTypes(),
-        AttendanceStatus.leave.color,
+        AttendanceStatus.leave.adaptiveColor(context),
         Icons.beach_access_rounded,
       ),
     ];
@@ -1427,7 +1425,7 @@ class _RollCallPageState extends State<RollCallPage>
         return Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
-            side: const BorderSide(color: Color(0xFFE3E9E4)),
+            side: BorderSide(color: Theme.of(context).dividerColor),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -1463,9 +1461,11 @@ class _RollCallPageState extends State<RollCallPage>
                           item.$1,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF718078),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -1531,11 +1531,11 @@ class _RollCallPageState extends State<RollCallPage>
     if (isWide) {
       return Row(
         children: [
-          const Text(
+          Text(
             '名单',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: Color(0xFF526159),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(width: 12),
@@ -1566,11 +1566,11 @@ class _RollCallPageState extends State<RollCallPage>
 
     return Row(
       children: [
-        const Text(
+        Text(
           '筛选',
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: Color(0xFF526159),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(width: 12),
@@ -1609,7 +1609,9 @@ class _RollCallPageState extends State<RollCallPage>
                 Text(
                   '当前搜索：“$keyword”',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF718078)),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ],
@@ -1667,7 +1669,7 @@ class _RollCallPageState extends State<RollCallPage>
       top: false,
       child: Material(
         elevation: 16,
-        color: const Color(0xFF1F2D26),
+        color: Theme.of(context).colorScheme.inverseSurface,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           child: Row(
@@ -1677,20 +1679,20 @@ class _RollCallPageState extends State<RollCallPage>
                   _selected.clear();
                   _selectionMode = false;
                 }),
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onInverseSurface,
                 icon: const Icon(Icons.close_rounded),
               ),
               Text(
                 '${_selected.length}人',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onInverseSurface,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               IconButton(
                 onPressed: _selectAllVisible,
                 tooltip: _allVisibleSelected ? '全不选' : '全选',
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onInverseSurface,
                 icon: Icon(
                   _allVisibleSelected
                       ? Icons.deselect_rounded
@@ -1700,7 +1702,7 @@ class _RollCallPageState extends State<RollCallPage>
               IconButton(
                 onPressed: _invertSelectionVisible,
                 tooltip: '反选',
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onInverseSurface,
                 icon: const Icon(Icons.flip_to_back_rounded),
               ),
               const Spacer(),
@@ -1721,13 +1723,16 @@ class _RollCallPageState extends State<RollCallPage>
                       : IconButton.filledTonal(
                           tooltip: status.label,
                           onPressed: () => _batchSetStatus(status),
-                          icon: Icon(status.icon, color: status.color),
+                          icon: Icon(
+                            status.icon,
+                            color: status.adaptiveColor(context),
+                          ),
                         ),
                 ),
               IconButton(
                 tooltip: '删除',
                 onPressed: _deleteSelected,
-                color: const Color(0xFFFFB4AB),
+                color: Theme.of(context).colorScheme.errorContainer,
                 icon: const Icon(Icons.delete_outline_rounded),
               ),
             ],

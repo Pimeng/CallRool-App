@@ -34,6 +34,23 @@ extension AttendanceStatusUi on AttendanceStatus {
     AttendanceStatus.personalLeave => const Color(0xFFF2E9FA),
     AttendanceStatus.sickLeave => const Color(0xFFE6F1FB),
   };
+  Color adaptiveColor(BuildContext context) {
+    if (Theme.of(context).brightness == Brightness.light) return color;
+    return switch (this) {
+      AttendanceStatus.unmarked => const Color(0xFFAEB8B1),
+      AttendanceStatus.present => const Color(0xFF72D69A),
+      AttendanceStatus.absent => const Color(0xFFFFB4AB),
+      AttendanceStatus.leave => const Color(0xFFFFC46B),
+      AttendanceStatus.personalLeave => const Color(0xFFD8B4FE),
+      AttendanceStatus.sickLeave => const Color(0xFF9CCAFF),
+    };
+  }
+
+  Color adaptiveSoftColor(BuildContext context) {
+    if (Theme.of(context).brightness == Brightness.light) return softColor;
+    return adaptiveColor(context).withValues(alpha: .14);
+  }
+
   IconData get icon => switch (this) {
     AttendanceStatus.unmarked => Icons.remove_rounded,
     AttendanceStatus.present => Icons.check_rounded,
