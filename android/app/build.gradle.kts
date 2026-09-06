@@ -4,8 +4,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val isTestPackage = providers.gradleProperty("testPackage").orNull == "true"
-
 android {
     namespace = "wtf.pimeng.callrool"
     compileSdk = flutter.compileSdkVersion
@@ -17,16 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = if (isTestPackage) {
-            "wtf.pimeng.callrool.test"
-        } else {
-            "wtf.pimeng.callrool"
-        }
-        manifestPlaceholders["appLabel"] = if (isTestPackage) {
-            "快捷考勤喵（测试版）"
-        } else {
-            "快捷考勤喵"
-        }
+        applicationId = "wtf.pimeng.callrool"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
