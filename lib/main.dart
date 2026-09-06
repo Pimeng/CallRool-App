@@ -206,6 +206,31 @@ class _RollCallPageState extends State<RollCallPage>
     });
   }
 
+  void _scrollToTop() {
+    if (!mounted || _topSearchMode) return;
+
+    if (_keepOverviewHidden) {
+      setState(() {
+        _keepOverviewHidden = false;
+        _overviewCollapsed = false;
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      const duration = Duration(milliseconds: 360);
+      const curve = Curves.easeOutCubic;
+      final innerPosition = _innerScrollPosition;
+      if (innerPosition != null && innerPosition.hasContentDimensions) {
+        innerPosition.animateTo(0, duration: duration, curve: curve);
+      }
+      if (_rosterScrollController.hasClients) {
+        _rosterScrollController.animateTo(0, duration: duration, curve: curve);
+      }
+    });
+  }
+
   bool _handleInnerScroll(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
       _innerScrollOffset = notification.metrics.pixels;
@@ -770,79 +795,97 @@ class _RollCallPageState extends State<RollCallPage>
                 child: Center(child: Icon(Icons.search_rounded)),
               )
             : null,
-        title: LayoutBuilder(
-          builder: (context, constraints) => TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: 0, end: _topSearchMode ? 1 : 0),
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeInOutCubic,
-            builder: (context, progress, child) {
-              return Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  Opacity(
-                    opacity: 1 - progress,
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AppMark(),
-                        SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '快捷考勤',
-                              style: TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
+        title: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _topSearchMode ? null : _scrollToTop,
+          child: SizedBox(
+            width: double.infinity,
+            child: LayoutBuilder(
+              builder: (context, constraints) => TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: _topSearchMode ? 1 : 0),
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeInOutCubic,
+                builder: (context, progress, child) {
+                  return Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      Opacity(
+                        opacity: 1 - progress,
+                        child: Tooltip(
+                          message: '回到顶部',
+                          child: InkWell(
+                            onTap: _scrollToTop,
+                            borderRadius: BorderRadius.circular(12),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AppMark(),
+                                  SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '快捷考勤',
+                                        style: TextStyle(
+                                          fontSize: 19,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      Text(
+                                        '班委快捷考勤APP',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF718078),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
-                            Text(
-                              '班委快捷考勤APP',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF718078),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                  ClipRect(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: progress,
-                      child: SizedBox(
-                        width: constraints.maxWidth,
-                        child: child,
                       ),
-                    ),
-                  ),
-                ],
-              );
-            },
-            child: TextField(
-              controller: _searchController,
-              focusNode: _topSearchFocusNode,
-              onChanged: (_) {
-                _invalidatePeopleCache();
-                setState(() {});
-              },
-              decoration: InputDecoration(
-                hintText: '搜索姓名',
-                isDense: true,
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: '清除搜索',
-                        onPressed: () {
-                          _searchController.clear();
-                          _invalidatePeopleCache();
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.close_rounded),
+                      ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: progress,
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            child: child,
+                          ),
+                        ),
                       ),
+                    ],
+                  );
+                },
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _topSearchFocusNode,
+                  onChanged: (_) {
+                    _invalidatePeopleCache();
+                    setState(() {});
+                  },
+                  decoration: InputDecoration(
+                    hintText: '搜索姓名',
+                    isDense: true,
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清除搜索',
+                            onPressed: () {
+                              _searchController.clear();
+                              _invalidatePeopleCache();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                ),
               ),
             ),
           ),
