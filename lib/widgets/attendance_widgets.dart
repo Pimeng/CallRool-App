@@ -82,6 +82,7 @@ class PersonRow extends StatelessWidget {
               ),
               if (!selectionMode)
                 for (final status in [
+                  AttendanceStatus.unmarked,
                   AttendanceStatus.present,
                   AttendanceStatus.absent,
                 ])
@@ -98,8 +99,16 @@ class PersonRow extends StatelessWidget {
                           )
                         : QuickStatusButton(
                             status: status,
-                            active: person.status == status,
+                            active:
+                                status != AttendanceStatus.unmarked &&
+                                person.status == status,
                             showLabel: wide,
+                            label: status == AttendanceStatus.unmarked
+                                ? '重置'
+                                : null,
+                            icon: status == AttendanceStatus.unmarked
+                                ? Icons.restart_alt_rounded
+                                : null,
                             onTap: () => onStatus(status),
                           ),
                   ),
@@ -118,15 +127,19 @@ class QuickStatusButton extends StatelessWidget {
     required this.active,
     required this.showLabel,
     required this.onTap,
+    this.label,
+    this.icon,
   });
   final AttendanceStatus status;
   final bool active;
   final bool showLabel;
   final VoidCallback? onTap;
+  final String? label;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: status.label,
+    message: label ?? status.label,
     child: InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
@@ -149,14 +162,14 @@ class QuickStatusButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              status.icon,
+              icon ?? status.icon,
               size: 19,
               color: active ? status.color : const Color(0xFF738078),
             ),
             if (showLabel) ...[
               const SizedBox(width: 5),
               Text(
-                status.label,
+                label ?? status.label,
                 style: TextStyle(
                   color: active ? status.color : const Color(0xFF56625B),
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
@@ -178,54 +191,64 @@ class AbsenceStatusButton extends StatelessWidget {
     required this.active,
     required this.showLabel,
     required this.onSelected,
+    this.compact = false,
   });
 
   final AttendanceStatus status;
   final bool active;
   final bool showLabel;
   final ValueChanged<AttendanceStatus> onSelected;
+  final bool compact;
 
   static const _options = [
     AttendanceStatus.absent,
     AttendanceStatus.leave,
     AttendanceStatus.personalLeave,
     AttendanceStatus.sickLeave,
-    AttendanceStatus.unmarked,
   ];
 
   @override
   Widget build(BuildContext context) {
     return Builder(
-      builder: (buttonContext) => Tooltip(
-        message: '选择缺勤类型',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (details) => _showMenu(buttonContext, details),
-          child: QuickStatusButton(
-            status: status,
-            active: active,
-            showLabel: showLabel,
-            onTap: null,
+      builder: (buttonContext) {
+        if (compact) {
+          return IconButton.filledTonal(
+            tooltip: '选择缺勤类型',
+            onPressed: () => _showMenu(buttonContext),
+            icon: Icon(status.icon, color: status.color),
+          );
+        }
+
+        return Tooltip(
+          message: '选择缺勤类型',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _showMenu(buttonContext),
+            child: QuickStatusButton(
+              status: status,
+              active: active,
+              showLabel: showLabel,
+              onTap: null,
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Future<void> _showMenu(
-    BuildContext buttonContext,
-    TapUpDetails tapDetails,
-  ) async {
+  Future<void> _showMenu(BuildContext buttonContext) async {
     final overlay = Overlay.of(buttonContext);
     final overlayBox = overlay.context.findRenderObject();
-    if (overlayBox is! RenderBox) return;
+    final buttonBox = buttonContext.findRenderObject();
+    if (overlayBox is! RenderBox || buttonBox is! RenderBox) return;
 
-    final buttonTopLeft = tapDetails.globalPosition - tapDetails.localPosition;
-    final buttonTopLeftInOverlay = overlayBox.globalToLocal(buttonTopLeft);
-    final buttonRect = buttonTopLeftInOverlay & Size(showLabel ? 76 : 40, 40);
+    final buttonTopLeftInOverlay = overlayBox.globalToLocal(
+      buttonBox.localToGlobal(Offset.zero),
+    );
+    final buttonRect = buttonTopLeftInOverlay & buttonBox.size;
 
     const menuWidth = 156.0;
-    const menuHeight = 5 * 44.0;
+    const menuHeight = 4 * 44.0;
     const gap = 6.0;
     const screenPadding = 8.0;
     final screenSize = overlayBox.size;
@@ -280,13 +303,7 @@ class AbsenceStatusButton extends StatelessWidget {
                           children: [
                             Icon(option.icon, size: 19, color: option.color),
                             const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                option == AttendanceStatus.unmarked
-                                    ? '重置'
-                                    : option.label,
-                              ),
-                            ),
+                            Expanded(child: Text(option.label)),
                             if (option == status && active)
                               Icon(
                                 Icons.check_rounded,

@@ -67,6 +67,32 @@ class _VisiblePerson {
   final int number;
 }
 
+class _ToolbarSliverDelegate extends SliverPersistentHeaderDelegate {
+  const _ToolbarSliverDelegate({required this.child, required this.height});
+
+  final Widget child;
+  final double height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _ToolbarSliverDelegate oldDelegate) =>
+      oldDelegate.child != child || oldDelegate.height != height;
+}
+
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
 
@@ -972,20 +998,37 @@ class _RollCallPageState extends State<RollCallPage>
                     child: NestedScrollView(
                       controller: _rosterScrollController,
                       headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                        SliverToBoxAdapter(
-                          child: Column(
-                            key: _overviewKey,
-                            children: _topSearchMode || _keepOverviewHidden
-                                ? const []
-                                : [
-                                    const SizedBox(height: 14),
-                                    _buildStats(),
-                                    const SizedBox(height: 16),
-                                    _buildToolbar(isWide),
-                                    const SizedBox(height: 10),
-                                  ],
+                        if (!_topSearchMode && !_keepOverviewHidden)
+                          SliverToBoxAdapter(
+                            child: Column(
+                              key: _overviewKey,
+                              children: [
+                                const SizedBox(height: 14),
+                                _buildStats(),
+                                const SizedBox(height: 16),
+                                _buildSearchToolbar(isWide),
+                                const SizedBox(height: 10),
+                              ],
+                            ),
                           ),
-                        ),
+                        if (!_topSearchMode)
+                          SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _ToolbarSliverDelegate(
+                              height: 52,
+                              child: SizedBox.expand(
+                                child: ColoredBox(
+                                  color: const Color(0xFFF5F7F5),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
+                                    child: _buildFilterToolbar(isWide),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                       body: _buildRoster(isWide),
                     ),
@@ -1055,14 +1098,10 @@ class _RollCallPageState extends State<RollCallPage>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
+                SizedBox(
                   width: 28,
                   height: 28,
-                  decoration: BoxDecoration(
-                    color: item.$3.withValues(alpha: .11),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Icon(item.$4, size: 15, color: item.$3),
+                  child: Icon(item.$4, size: 19, color: item.$3),
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -1076,7 +1115,7 @@ class _RollCallPageState extends State<RollCallPage>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 20,
                             height: 1,
                             fontWeight: FontWeight.w800,
                           ),
@@ -1089,7 +1128,7 @@ class _RollCallPageState extends State<RollCallPage>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             color: Color(0xFF718078),
                           ),
                         ),
@@ -1105,14 +1144,8 @@ class _RollCallPageState extends State<RollCallPage>
     );
   }
 
-  Widget _buildToolbar(bool isWide) {
-    final filters = [
-      (RosterFilter.all, '全部'),
-      (RosterFilter.unmarked, '未点名'),
-      (RosterFilter.present, '正常'),
-      (RosterFilter.absent, '缺勤'),
-    ];
-    final search = TextField(
+  Widget _buildSearchField() {
+    return TextField(
       controller: _searchController,
       onChanged: (_) {
         _invalidatePeopleCache();
@@ -1133,7 +1166,16 @@ class _RollCallPageState extends State<RollCallPage>
               ),
       ),
     );
-    final chips = SingleChildScrollView(
+  }
+
+  Widget _buildFilterChips() {
+    final filters = [
+      (RosterFilter.all, '全部'),
+      (RosterFilter.unmarked, '未点名'),
+      (RosterFilter.present, '正常'),
+      (RosterFilter.absent, '缺勤'),
+    ];
+    return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
@@ -1151,6 +1193,10 @@ class _RollCallPageState extends State<RollCallPage>
         ],
       ),
     );
+  }
+
+  Widget _buildSearchToolbar(bool isWide) {
+    final search = _buildSearchField();
     if (isWide) {
       return Row(
         children: [
@@ -1163,8 +1209,7 @@ class _RollCallPageState extends State<RollCallPage>
           ),
           const SizedBox(width: 12),
           SizedBox(width: 260, child: search),
-          const SizedBox(width: 12),
-          Expanded(child: chips),
+          const Spacer(),
           TextButton.icon(
             onPressed: _enterSelectionMode,
             icon: const Icon(Icons.checklist_rounded),
@@ -1173,20 +1218,33 @@ class _RollCallPageState extends State<RollCallPage>
         ],
       );
     }
-    return Column(
+    return Row(
       children: [
-        search,
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: chips),
-            IconButton(
-              tooltip: '批量选择',
-              onPressed: _enterSelectionMode,
-              icon: const Icon(Icons.checklist_rounded),
-            ),
-          ],
+        Expanded(child: search),
+        IconButton(
+          tooltip: '批量选择',
+          onPressed: _enterSelectionMode,
+          icon: const Icon(Icons.checklist_rounded),
         ),
+      ],
+    );
+  }
+
+  Widget _buildFilterToolbar(bool isWide) {
+    final chips = _buildFilterChips();
+    if (!isWide) return chips;
+
+    return Row(
+      children: [
+        const Text(
+          '筛选',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF526159),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: chips),
       ],
     );
   }
@@ -1299,6 +1357,7 @@ class _RollCallPageState extends State<RollCallPage>
                           status: AttendanceStatus.absent,
                           active: false,
                           showLabel: false,
+                          compact: true,
                           onSelected: _batchSetStatus,
                         )
                       : IconButton.filledTonal(
