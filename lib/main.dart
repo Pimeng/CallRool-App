@@ -705,6 +705,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Widget _buildStats() {
+    final isWide = MediaQuery.sizeOf(context).width >= 560;
     final items = [
       (
         '未点名',
@@ -734,9 +735,9 @@ class _RollCallPageState extends State<RollCallPage>
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        childAspectRatio: 2.35,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: isWide ? 4 : 2,
+        childAspectRatio: isWide ? 2.35 : 2.05,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -768,22 +769,28 @@ class _RollCallPageState extends State<RollCallPage>
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text(
-                        '${item.$2}',
-                        style: const TextStyle(
-                          fontSize: 17,
-                          height: 1,
-                          fontWeight: FontWeight.w800,
+                      Flexible(
+                        child: Text(
+                          '${item.$2}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        item.$1,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF718078),
+                      Flexible(
+                        child: Text(
+                          item.$1,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF718078),
+                          ),
                         ),
                       ),
                     ],
