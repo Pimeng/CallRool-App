@@ -662,87 +662,100 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _showImportDialog() async {
     final controller = TextEditingController();
     var names = <String>[];
-    final action = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 24,
+    String? action;
+    while (true) {
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 24,
+            ),
+            title: const Text('导入名单'),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('一行一个名字，自动忽略空行和重复姓名。'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    minLines: 7,
+                    maxLines: 9,
+                    decoration: const InputDecoration(hintText: '张三\n李四\n王五'),
+                    onChanged: (value) =>
+                        setDialogState(() => names = _parseNames(value)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await FilePicker.pickFile(
+                            dialogTitle: '选择名单文件',
+                            type: FileType.custom,
+                            allowedExtensions: const ['txt'],
+                          );
+                          if (picked == null) return;
+                          final text = utf8.decode(
+                            await picked.readAsBytes(),
+                            allowMalformed: true,
+                          );
+                          controller.text = text;
+                          setDialogState(() => names = _parseNames(text));
+                        },
+                        icon: const Icon(Icons.folder_open_rounded),
+                        label: const Text('选择 TXT'),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${names.length} 人',
+                        style: const TextStyle(color: Color(0xFF66736B)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              OutlinedButton(
+                onPressed: names.isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, 'replace'),
+                child: const Text('替换现有'),
+              ),
+              FilledButton(
+                onPressed: names.isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, 'append'),
+                child: const Text('追加'),
+              ),
+            ],
           ),
-          title: const Text('导入名单'),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('一行一个名字，自动忽略空行和重复姓名。'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  minLines: 7,
-                  maxLines: 9,
-                  decoration: const InputDecoration(hintText: '张三\n李四\n王五'),
-                  onChanged: (value) =>
-                      setDialogState(() => names = _parseNames(value)),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await FilePicker.pickFile(
-                          dialogTitle: '选择名单文件',
-                          type: FileType.custom,
-                          allowedExtensions: const ['txt'],
-                        );
-                        if (picked == null) return;
-                        final text = utf8.decode(
-                          await picked.readAsBytes(),
-                          allowMalformed: true,
-                        );
-                        controller.text = text;
-                        setDialogState(() => names = _parseNames(text));
-                      },
-                      icon: const Icon(Icons.folder_open_rounded),
-                      label: const Text('选择 TXT'),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${names.length} 人',
-                      style: const TextStyle(color: Color(0xFF66736B)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            OutlinedButton(
-              onPressed: names.isEmpty
-                  ? null
-                  : () => Navigator.pop(dialogContext, 'replace'),
-              child: const Text('替换现有'),
-            ),
-            FilledButton(
-              onPressed: names.isEmpty
-                  ? null
-                  : () => Navigator.pop(dialogContext, 'append'),
-              child: const Text('追加'),
-            ),
-          ],
         ),
-      ),
-    );
-    if (action == null || names.isEmpty) return;
-    if (action == 'replace') {
-      if (!mounted) return;
+      );
+      if (action == null || names.isEmpty) {
+        controller.dispose();
+        return;
+      }
+      if (action != 'replace') break;
+
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -753,7 +766,7 @@ class _RollCallPageState extends State<RollCallPage>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: const Text('返回修改'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -766,8 +779,10 @@ class _RollCallPageState extends State<RollCallPage>
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed == true) break;
     }
+    controller.dispose();
+    if (!mounted) return;
     _invalidatePeopleCache();
     setState(() {
       if (action == 'replace') {
@@ -868,30 +883,79 @@ class _RollCallPageState extends State<RollCallPage>
 
   Future<void> _addPerson() async {
     final controller = TextEditingController();
-    final name = await showDialog<String>(
+    var selectedStatus = AttendanceStatus.unmarked;
+    final result = await showDialog<(String, AttendanceStatus)>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('添加人员'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(labelText: '姓名'),
-          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('添加人员'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(labelText: '姓名'),
+                  onChanged: (_) => setDialogState(() {}),
+                  onSubmitted: (value) {
+                    final name = value.trim();
+                    if (name.isNotEmpty) {
+                      Navigator.pop(dialogContext, (name, selectedStatus));
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<AttendanceStatus>(
+                  initialValue: selectedStatus,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: '当前考勤状态'),
+                  items: [
+                    for (final status in AttendanceStatus.values)
+                      DropdownMenuItem(
+                        value: status,
+                        child: Row(
+                          children: [
+                            Icon(status.icon, size: 19, color: status.color),
+                            const SizedBox(width: 10),
+                            Text(status.label),
+                          ],
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => selectedStatus = value);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: controller.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, (
+                      controller.text.trim(),
+                      selectedStatus,
+                    )),
+              child: const Text('添加'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('添加'),
-          ),
-        ],
       ),
     );
-    if (name == null || name.isEmpty) return;
+    controller.dispose();
+    if (result == null) return;
+    final name = result.$1;
+    if (name.isEmpty) return;
     if (_people.any(
       (person) => person.name.toLowerCase() == name.toLowerCase(),
     )) {
@@ -899,17 +963,30 @@ class _RollCallPageState extends State<RollCallPage>
       return;
     }
     _invalidatePeopleCache();
-    setState(() => _people.add(Person(id: _nextId++, name: name)));
+    setState(
+      () => _people.add(Person(id: _nextId++, name: name, status: result.$2)),
+    );
     await _save();
   }
 
   Future<void> _deleteSelected() async {
     if (_selected.isEmpty) return;
+    final selectedNames = _people
+        .where((person) => _selected.contains(person.id))
+        .map((person) => person.name)
+        .toList();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除已选 ${_selected.length} 人？'),
-        content: const Text('他们的当前考勤状态也会一并删除。'),
+        title: Text('将要删除${selectedNames.length}人'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 240),
+          child: SingleChildScrollView(
+            child: Text(
+              '${selectedNames.join('、')} 将会被删除，且连同他们目前的考勤状态一并删除，是否继续？',
+            ),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

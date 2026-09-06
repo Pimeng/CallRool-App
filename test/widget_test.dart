@@ -1,4 +1,6 @@
 import 'package:callrool_app/main.dart';
+import 'package:callrool_app/models/attendance.dart';
+import 'package:callrool_app/widgets/attendance_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -83,6 +85,74 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, '替换现有'));
     await tester.pumpAndSettle();
     expect(find.text('确认替换现有名单？'), findsOneWidget);
+
+    await tester.tap(find.text('返回修改'));
+    await tester.pumpAndSettle();
+    expect(find.text('导入名单'), findsOneWidget);
+    final importField = tester.widget<TextField>(find.byType(TextField).last);
+    expect(importField.controller!.text, '新同学');
+  });
+
+  testWidgets('删除确认展示当前选中的完整名单', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('批量选择'));
+    await tester.pumpAndSettle();
+    for (final name in ['刘一', '陈二', '张三']) {
+      await tester.tap(find.text(name));
+      await tester.pump();
+    }
+    await tester.tap(find.byTooltip('删除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('将要删除3人'), findsOneWidget);
+    expect(find.text('刘一、陈二、张三 将会被删除，且连同他们目前的考勤状态一并删除，是否继续？'), findsOneWidget);
+  });
+
+  testWidgets('添加人员时可以选择初始考勤状态', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.widgetWithText(FloatingActionButton, '添加'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '王小明');
+    await tester.tap(find.byType(DropdownButtonFormField<AttendanceStatus>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('缺勤').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '添加'));
+    await tester.pumpAndSettle();
+
+    final saved = await SharedPreferences.getInstance().then(
+      (prefs) => prefs.getString('roll_call_people_v1'),
+    );
+    expect(saved, contains('"name":"王小明","status":"absent"'));
+  });
+
+  testWidgets('人员状态使用整行底色且缺勤菜单没有投影', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('选择缺勤类型').first);
+    await tester.pumpAndSettle();
+    final menu = tester.widget<Material>(
+      find.byKey(const ValueKey('absence-status-menu')),
+    );
+    expect(menu.elevation, 0);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('absence-status-menu')),
+        matching: find.text('缺勤'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final personRow = find.ancestor(
+      of: find.text('刘一'),
+      matching: find.byType(PersonRow),
+    );
+    final rowMaterial = tester.widget<Material>(
+      find.descendant(of: personRow, matching: find.byType(Material)).first,
+    );
+    expect(rowMaterial.color, AttendanceStatus.absent.softColor);
   });
 
   testWidgets('320 宽度顶部栏不溢出', (tester) async {

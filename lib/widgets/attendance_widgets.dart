@@ -24,8 +24,20 @@ class PersonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasStatus = person.status != AttendanceStatus.unmarked;
+    final rowColor = selected
+        ? const Color(0xFFE7F3EB)
+        : hasStatus
+        ? person.status.softColor
+        : Colors.white;
+    final borderColor = selected
+        ? const Color(0xFF78AC8C)
+        : hasStatus
+        ? person.status.color.withValues(alpha: .55)
+        : const Color(0xFFE3E9E4);
+
     return Material(
-      color: selected ? const Color(0xFFE7F3EB) : Colors.white,
+      color: rowColor,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -35,11 +47,7 @@ class PersonRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF78AC8C)
-                  : const Color(0xFFE3E9E4),
-            ),
+            border: Border.all(color: borderColor),
           ),
           child: Row(
             children: [
@@ -48,7 +56,9 @@ class PersonRow extends StatelessWidget {
               else
                 CircleAvatar(
                   radius: 20,
-                  backgroundColor: person.status.softColor,
+                  backgroundColor: hasStatus
+                      ? Colors.white.withValues(alpha: .82)
+                      : person.status.softColor,
                   foregroundColor: person.status.color,
                   child: Text(
                     person.name.characters.first,
@@ -269,8 +279,8 @@ class AbsenceStatusButton extends StatelessWidget {
     );
     final buttonRect = buttonTopLeftInOverlay & buttonBox.size;
 
-    const menuWidth = 156.0;
-    const menuHeight = 4 * 44.0;
+    const menuWidth = 168.0;
+    const menuHeight = 4 * 48.0 + 8.0;
     const gap = 6.0;
     const screenPadding = 8.0;
     final screenSize = overlayBox.size;
@@ -307,65 +317,90 @@ class AbsenceStatusButton extends StatelessWidget {
           width: menuWidth,
           height: menuHeight,
           child: Material(
-            elevation: 5,
+            key: const ValueKey('absence-status-menu'),
+            elevation: 0,
             color: Colors.white,
             clipBehavior: Clip.antiAlias,
-            borderRadius: BorderRadius.circular(14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final option in _options)
-                  SizedBox(
-                    height: 44,
-                    child: InkWell(
-                      onTap: () => Navigator.of(context).pop(option),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: Row(
-                          children: [
-                            Icon(option.icon, size: 19, color: option.color),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text(option.label)),
-                            if (option == status && active)
-                              Icon(
-                                Icons.check_rounded,
-                                size: 18,
-                                color: option.color,
-                              ),
-                          ],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Color(0xFFDDE4DF)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in _options)
+                    SizedBox(
+                      height: 48,
+                      child: Ink(
+                        color: option == status && active
+                            ? option.softColor
+                            : Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(option),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  option.icon,
+                                  size: 20,
+                                  color: option.color,
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Text(
+                                    option.label,
+                                    style: TextStyle(
+                                      fontWeight: option == status && active
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (option == status && active)
+                                  Icon(
+                                    Icons.check_rounded,
+                                    size: 19,
+                                    color: option.color,
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return AnimatedBuilder(
-          animation: animation,
-          builder: (context, _) => Stack(
-            children: [
-              Positioned(
-                left: menuLeft,
-                top: openAbove ? null : menuTop,
-                bottom: openAbove
-                    ? screenSize.height - menuTop - menuHeight
-                    : null,
-                width: menuWidth,
-                child: ClipRect(
-                  child: Align(
-                    alignment: openAbove
-                        ? Alignment.bottomCenter
-                        : Alignment.topCenter,
-                    heightFactor: animation.value,
-                    child: Opacity(opacity: animation.value, child: child),
+        return Stack(
+          children: [
+            Positioned(
+              left: menuLeft,
+              top: menuTop,
+              width: menuWidth,
+              child: FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: animation.drive(
+                    Tween<double>(
+                      begin: .96,
+                      end: 1,
+                    ).chain(CurveTween(curve: Curves.easeOutCubic)),
                   ),
+                  alignment: openAbove
+                      ? Alignment.bottomRight
+                      : Alignment.topRight,
+                  child: child,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
