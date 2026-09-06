@@ -80,10 +80,28 @@ class _LongPressReorderableDragStartListener
 
   @override
   MultiDragGestureRecognizer createRecognizer() {
-    return DelayedMultiDragGestureRecognizer(
+    return _HapticDelayedMultiDragGestureRecognizer(
       delay: const Duration(milliseconds: 800),
       debugOwner: this,
     );
+  }
+}
+
+class _HapticDelayedMultiDragGestureRecognizer
+    extends DelayedMultiDragGestureRecognizer {
+  _HapticDelayedMultiDragGestureRecognizer({
+    required super.delay,
+    super.debugOwner,
+  });
+
+  @override
+  void acceptGesture(int pointer) {
+    super.acceptGesture(pointer);
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      HapticFeedback.selectionClick();
+    }
   }
 }
 
@@ -262,8 +280,9 @@ class _RollCallPageState extends State<RollCallPage>
   bool _handleInnerScroll(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
       _innerScrollOffset = notification.metrics.pixels;
-      _innerScrollPosition = Scrollable.maybeOf(notification.context!)
-          ?.position;
+      _innerScrollPosition = Scrollable.maybeOf(
+        notification.context!,
+      )?.position;
       if (_keepOverviewHidden && _innerScrollOffset <= 1 && mounted) {
         setState(() {
           _keepOverviewHidden = false;

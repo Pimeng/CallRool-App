@@ -487,10 +487,13 @@ class AppMark extends StatelessWidget {
         color: colorScheme.primary,
         borderRadius: BorderRadius.circular(11),
       ),
-      child: Icon(
-        Icons.how_to_reg_rounded,
-        color: colorScheme.onPrimary,
-        size: 21,
+      child: Transform.translate(
+        offset: const Offset(1, 1),
+        child: Icon(
+          Icons.how_to_reg_rounded,
+          color: colorScheme.onPrimary,
+          size: 21,
+        ),
       ),
     );
   }

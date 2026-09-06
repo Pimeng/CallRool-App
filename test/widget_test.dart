@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,6 +66,31 @@ String _scheduleForToday() {
 }
 
 void main() {
+  testWidgets('移动端长按进入拖拽时提供触觉反馈', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    String? hapticType;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        hapticType = call.arguments as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    await _pumpApp(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('刘一')),
+    );
+    await tester.pump(const Duration(milliseconds: 801));
+
+    expect(hapticType, 'HapticFeedbackType.selectionClick');
+    await gesture.up();
+  });
+
   testWidgets('跟随系统启用深色主题', (tester) async {
     await _pumpDarkApp(tester);
 
