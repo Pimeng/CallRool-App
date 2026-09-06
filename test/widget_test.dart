@@ -68,7 +68,6 @@ String _scheduleForToday() {
 void main() {
   testWidgets('移动端长按进入拖拽时提供触觉反馈', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     String? hapticType;
     final messenger = tester.binding.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -77,18 +76,20 @@ void main() {
       }
       return null;
     });
-    addTearDown(
-      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
-    );
-    await _pumpApp(tester);
+    try {
+      await _pumpApp(tester);
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.text('刘一')),
-    );
-    await tester.pump(const Duration(milliseconds: 801));
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('刘一')),
+      );
+      await tester.pump(const Duration(milliseconds: 801));
 
-    expect(hapticType, 'HapticFeedbackType.selectionClick');
-    await gesture.up();
+      expect(hapticType, 'HapticFeedbackType.selectionClick');
+      await gesture.up();
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+    }
   });
 
   testWidgets('跟随系统启用深色主题', (tester) async {
