@@ -108,6 +108,8 @@ class _RollCallPageState extends State<RollCallPage>
     '郑十',
   ];
   final _searchController = TextEditingController();
+  final _rosterScrollController = ScrollController();
+  final _overviewKey = GlobalKey();
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
@@ -117,20 +119,48 @@ class _RollCallPageState extends State<RollCallPage>
   Map<AttendanceStatus, int>? _statusCountsCache;
   bool _loading = true;
   bool _selectionMode = false;
+  bool _overviewCollapsed = false;
+  bool _topSearchMode = false;
   int _nextId = 1;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _rosterScrollController.addListener(_handleRosterScroll);
     _load();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _rosterScrollController
+      ..removeListener(_handleRosterScroll)
+      ..dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleRosterScroll() {
+    if (!_rosterScrollController.hasClients || !mounted) return;
+    final overviewContext = _overviewKey.currentContext;
+    final overviewRenderObject = overviewContext?.findRenderObject();
+    if (overviewRenderObject is! RenderBox) return;
+    final collapsed =
+        _rosterScrollController.offset >= overviewRenderObject.size.height - 1;
+    if (collapsed != _overviewCollapsed) {
+      setState(() => _overviewCollapsed = collapsed);
+    }
+  }
+
+  void _openTopSearch() {
+    setState(() => _topSearchMode = true);
+  }
+
+  void _closeTopSearch() {
+    _searchController.clear();
+    _invalidatePeopleCache();
+    setState(() => _topSearchMode = false);
   }
 
   @override
@@ -615,54 +645,89 @@ class _RollCallPageState extends State<RollCallPage>
         titleSpacing: 16,
         scrolledUnderElevation: 0,
         backgroundColor: const Color(0xFFF5F7F5),
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppMark(),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '快捷考勤',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+        title: _topSearchMode
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (_) {
+                  _invalidatePeopleCache();
+                  setState(() {});
+                },
+                decoration: const InputDecoration(
+                  hintText: '搜索姓名',
+                  prefixIcon: Icon(Icons.search_rounded),
+                  isDense: true,
                 ),
-                Text(
-                  '班委快捷考勤APP',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF718078)),
+              )
+            : const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppMark(),
+                  SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '快捷考勤',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '班委快捷考勤APP',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF718078),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+        actions: [
+          if (_topSearchMode)
+            IconButton(
+              tooltip: '关闭搜索',
+              onPressed: _closeTopSearch,
+              icon: const Icon(Icons.close_rounded),
+            )
+          else if (_overviewCollapsed)
+            IconButton(
+              tooltip: '搜索姓名',
+              onPressed: _openTopSearch,
+              icon: const Icon(Icons.search_rounded),
+            ),
+          IconButton(
+            tooltip: '重置考勤',
+            onPressed: _topSearchMode || _people.isEmpty
+                ? null
+                : _resetAttendance,
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+          if (!_topSearchMode)
+            PopupMenuButton<String>(
+              tooltip: '名单操作',
+              onSelected: (value) =>
+                  value == 'import' ? _showImportDialog() : _exportRoster(),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'import',
+                  child: ListTile(
+                    leading: Icon(Icons.upload_file_rounded),
+                    title: Text('导入名单'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(
+                    leading: Icon(Icons.download_rounded),
+                    title: Text('导出名单'),
+                  ),
                 ),
               ],
             ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: '重置考勤',
-            onPressed: _people.isEmpty ? null : _resetAttendance,
-            icon: const Icon(Icons.restart_alt_rounded),
-          ),
-          PopupMenuButton<String>(
-            tooltip: '名单操作',
-            onSelected: (value) =>
-                value == 'import' ? _showImportDialog() : _exportRoster(),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'import',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file_rounded),
-                  title: Text('导入名单'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  leading: Icon(Icons.download_rounded),
-                  title: Text('导出名单'),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(width: 4),
         ],
       ),
@@ -679,15 +744,25 @@ class _RollCallPageState extends State<RollCallPage>
                       isWide ? 28 : 14,
                       12,
                     ),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 14),
-                        _buildStats(),
-                        const SizedBox(height: 16),
-                        _buildToolbar(isWide),
-                        const SizedBox(height: 10),
-                        Expanded(child: _buildRoster(isWide)),
+                    child: NestedScrollView(
+                      controller: _rosterScrollController,
+                      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                        SliverToBoxAdapter(
+                          child: Column(
+                            key: _overviewKey,
+                            children: _topSearchMode
+                                ? const []
+                                : [
+                                    const SizedBox(height: 14),
+                                    _buildStats(),
+                                    const SizedBox(height: 16),
+                                    _buildToolbar(isWide),
+                                    const SizedBox(height: 10),
+                                  ],
+                          ),
+                        ),
                       ],
+                      body: _buildRoster(isWide),
                     ),
                   ),
                 ),
