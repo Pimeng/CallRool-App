@@ -70,19 +70,41 @@ class PersonRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      '第 $number 号 · ${person.status.label}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: person.status.color,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '第 $number 号',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF66736B),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: person.status.softColor,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            person.status.label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: person.status.color,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
               if (!selectionMode)
                 for (final status in [
-                  AttendanceStatus.unmarked,
                   AttendanceStatus.present,
                   AttendanceStatus.absent,
                 ])

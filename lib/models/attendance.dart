@@ -54,4 +54,4 @@ bool isLeaveStatus(AttendanceStatus status) =>
     status == AttendanceStatus.personalLeave ||
     status == AttendanceStatus.sickLeave;
 
-enum RosterFilter { all, unmarked, present, absent }
+enum RosterFilter { all, unmarked, present, absent, leave }

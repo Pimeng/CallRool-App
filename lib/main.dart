@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -93,6 +94,23 @@ class _ToolbarSliverDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.child != child || oldDelegate.height != height;
 }
 
+class _LongPressReorderableDragStartListener
+    extends ReorderableDragStartListener {
+  const _LongPressReorderableDragStartListener({
+    super.key,
+    required super.child,
+    required super.index,
+  });
+
+  @override
+  MultiDragGestureRecognizer createRecognizer() {
+    return DelayedMultiDragGestureRecognizer(
+      delay: const Duration(milliseconds: 800),
+      debugOwner: this,
+    );
+  }
+}
+
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
 
@@ -122,6 +140,7 @@ void main() {
 class _RollCallPageState extends State<RollCallPage>
     with WidgetsBindingObserver {
   static const _storageKey = 'roll_call_people_v1';
+  static const _lastModifiedStorageKey = 'roll_call_last_modified_v1';
   static const _defaultNames = [
     '刘一',
     '陈二',
@@ -153,6 +172,7 @@ class _RollCallPageState extends State<RollCallPage>
   double _innerScrollOffset = 0;
   ScrollPosition? _innerScrollPosition;
   int _nextId = 1;
+  DateTime? _lastModifiedAt;
 
   @override
   void initState() {
@@ -290,6 +310,9 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
+    _lastModifiedAt = DateTime.tryParse(
+      prefs.getString(_lastModifiedStorageKey) ?? '',
+    );
     if (raw == null) {
       _people.addAll(
         _defaultNames.asMap().entries.map(
@@ -317,11 +340,19 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Future<void> _save() async {
+    _lastModifiedAt = DateTime.now();
+    if (mounted) setState(() {});
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _storageKey,
-      jsonEncode(_people.map((person) => person.toJson()).toList()),
-    );
+    await Future.wait([
+      prefs.setString(
+        _storageKey,
+        jsonEncode(_people.map((person) => person.toJson()).toList()),
+      ),
+      prefs.setString(
+        _lastModifiedStorageKey,
+        _lastModifiedAt!.toIso8601String(),
+      ),
+    ]);
   }
 
   int _count(AttendanceStatus status) {
@@ -369,9 +400,8 @@ class _RollCallPageState extends State<RollCallPage>
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
         RosterFilter.present => person.status == AttendanceStatus.present,
-        RosterFilter.absent =>
-          person.status != AttendanceStatus.unmarked &&
-              person.status != AttendanceStatus.present,
+        RosterFilter.absent => person.status == AttendanceStatus.absent,
+        RosterFilter.leave => isLeaveStatus(person.status),
       };
       if (searched && filtered) {
         visible.add(_VisiblePerson(person: person, number: index + 1));
@@ -386,6 +416,54 @@ class _RollCallPageState extends State<RollCallPage>
   void _invalidatePeopleCache() {
     _visiblePeopleCache = null;
     _statusCountsCache = null;
+  }
+
+  String get _filterLabel => switch (_filter) {
+    RosterFilter.all => '全部',
+    RosterFilter.unmarked => '未点名',
+    RosterFilter.present => '正常',
+    RosterFilter.absent => '缺勤',
+    RosterFilter.leave => '请假',
+  };
+
+  void _retainVisibleSelection({bool notifyWhenRemoved = false}) {
+    if (_selected.isEmpty) return;
+    final visibleIds = _visiblePeople.map((item) => item.person.id).toSet();
+    final previousCount = _selected.length;
+    _selected.retainWhere(visibleIds.contains);
+    final removedCount = previousCount - _selected.length;
+    if (notifyWhenRemoved && removedCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _toast('已取消 $removedCount 名筛选外人员的选择');
+      });
+    }
+  }
+
+  void _handleSearchChanged(String _) {
+    _invalidatePeopleCache();
+    setState(() => _retainVisibleSelection(notifyWhenRemoved: true));
+  }
+
+  void _setFilter(RosterFilter filter) {
+    _invalidatePeopleCache();
+    setState(() {
+      _filter = filter;
+      _retainVisibleSelection(notifyWhenRemoved: true);
+    });
+  }
+
+  String get _lastModifiedLabel {
+    final value = _lastModifiedAt;
+    if (value == null) return '暂无修改记录';
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final time = '${twoDigits(value.hour)}:${twoDigits(value.minute)}';
+    if (value.year == now.year &&
+        value.month == now.month &&
+        value.day == now.day) {
+      return '今天 $time';
+    }
+    return '${value.year}-${twoDigits(value.month)}-${twoDigits(value.day)} $time';
   }
 
   List<String> _parseNames(String text) {
@@ -649,20 +727,47 @@ class _RollCallPageState extends State<RollCallPage>
             OutlinedButton(
               onPressed: names.isEmpty
                   ? null
-                  : () => Navigator.pop(dialogContext, 'append'),
-              child: const Text('追加'),
+                  : () => Navigator.pop(dialogContext, 'replace'),
+              child: const Text('替换现有'),
             ),
             FilledButton(
               onPressed: names.isEmpty
                   ? null
-                  : () => Navigator.pop(dialogContext, 'replace'),
-              child: const Text('替换现有'),
+                  : () => Navigator.pop(dialogContext, 'append'),
+              child: const Text('追加'),
             ),
           ],
         ),
       ),
     );
     if (action == null || names.isEmpty) return;
+    if (action == 'replace') {
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('确认替换现有名单？'),
+          content: Text(
+            '现有 ${_people.length} 人及其考勤状态将被删除，并替换为 ${names.length} 人。此操作无法撤销。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认替换'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     _invalidatePeopleCache();
     setState(() {
       if (action == 'replace') {
@@ -697,6 +802,7 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _copyAttendanceSummary() async {
     if (_people.isEmpty) return;
 
+    final unmarked = <String>[];
     final present = <String>[];
     final absent = <String>[];
     final leave = <String>[];
@@ -715,8 +821,29 @@ class _RollCallPageState extends State<RollCallPage>
         case AttendanceStatus.sickLeave:
           sickLeave.add(person.name);
         case AttendanceStatus.unmarked:
-          break;
+          unmarked.add(person.name);
       }
+    }
+
+    if (unmarked.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('还有 ${unmarked.length} 人未点名'),
+          content: const Text('当前考勤尚未完成，复制内容中会保留未点名人员提醒。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('返回点名'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('继续复制'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
     }
 
     String twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -732,6 +859,7 @@ class _RollCallPageState extends State<RollCallPage>
       '公假：${leave.join('、')}',
       '事假：${personalLeave.join('、')}',
       '病假：${sickLeave.join('、')}',
+      if (unmarked.isNotEmpty) '未点名（${unmarked.length}人）：${unmarked.join('、')}',
     ].join('\n');
 
     await Clipboard.setData(ClipboardData(text: content));
@@ -791,6 +919,8 @@ class _RollCallPageState extends State<RollCallPage>
             style: FilledButton.styleFrom(
               minimumSize: const Size(76, 44),
               padding: const EdgeInsets.symmetric(horizontal: 18),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -847,33 +977,37 @@ class _RollCallPageState extends State<RollCallPage>
                           child: InkWell(
                             onTap: _scrollToTop,
                             borderRadius: BorderRadius.circular(12),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
                               child: Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  AppMark(),
-                                  SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        '快捷考勤',
-                                        style: TextStyle(
-                                          fontSize: 19,
-                                          fontWeight: FontWeight.w800,
+                                  const AppMark(),
+                                  const SizedBox(width: 10),
+                                  Flexible(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Text(
+                                          '快捷考勤',
+                                          style: TextStyle(
+                                            fontSize: 19,
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        '班委快捷考勤APP',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF718078),
+                                        Text(
+                                          '上次修改：$_lastModifiedLabel',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF718078),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -897,10 +1031,7 @@ class _RollCallPageState extends State<RollCallPage>
                 child: TextField(
                   controller: _searchController,
                   focusNode: _topSearchFocusNode,
-                  onChanged: (_) {
-                    _invalidatePeopleCache();
-                    setState(() {});
-                  },
+                  onChanged: _handleSearchChanged,
                   decoration: InputDecoration(
                     hintText: '搜索姓名',
                     isDense: true,
@@ -1016,24 +1147,23 @@ class _RollCallPageState extends State<RollCallPage>
                               ],
                             ),
                           ),
-                        if (!_topSearchMode)
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _ToolbarSliverDelegate(
-                              height: 52,
-                              child: SizedBox.expand(
-                                child: ColoredBox(
-                                  color: const Color(0xFFF5F7F5),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 2,
-                                    ),
-                                    child: _buildFilterToolbar(isWide),
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _ToolbarSliverDelegate(
+                            height: 52,
+                            child: SizedBox.expand(
+                              child: ColoredBox(
+                                color: const Color(0xFFF5F7F5),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
                                   ),
+                                  child: _buildFilterToolbar(isWide),
                                 ),
                               ),
                             ),
                           ),
+                        ),
                       ],
                       body: _buildRoster(isWide),
                     ),
@@ -1152,10 +1282,7 @@ class _RollCallPageState extends State<RollCallPage>
   Widget _buildSearchField() {
     return TextField(
       controller: _searchController,
-      onChanged: (_) {
-        _invalidatePeopleCache();
-        setState(() {});
-      },
+      onChanged: _handleSearchChanged,
       decoration: InputDecoration(
         hintText: '搜索姓名',
         prefixIcon: const Icon(Icons.search_rounded),
@@ -1179,6 +1306,7 @@ class _RollCallPageState extends State<RollCallPage>
       (RosterFilter.unmarked, '未点名'),
       (RosterFilter.present, '正常'),
       (RosterFilter.absent, '缺勤'),
+      (RosterFilter.leave, '请假'),
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1188,10 +1316,7 @@ class _RollCallPageState extends State<RollCallPage>
             FilterChip(
               label: Text(item.$2),
               selected: _filter == item.$1,
-              onSelected: (_) {
-                _invalidatePeopleCache();
-                setState(() => _filter = item.$1);
-              },
+              onSelected: (_) => _setFilter(item.$1),
             ),
             const SizedBox(width: 6),
           ],
@@ -1266,8 +1391,29 @@ class _RollCallPageState extends State<RollCallPage>
     }
     final visible = _visiblePeople;
     if (visible.isEmpty) {
-      return const Center(
-        child: Text('没有匹配的人员', style: TextStyle(color: Color(0xFF718078))),
+      final keyword = _searchController.text.trim();
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '在“$_filterLabel”筛选下没有匹配人员',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              if (keyword.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '当前搜索：“$keyword”',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF718078)),
+                ),
+              ],
+            ],
+          ),
+        ),
       );
     }
     final list = _selectionMode
@@ -1285,7 +1431,7 @@ class _RollCallPageState extends State<RollCallPage>
             onReorderItem: _reorderPeople,
             proxyDecorator: (child, _, _) => child,
             itemBuilder: (context, index) =>
-                ReorderableDelayedDragStartListener(
+                _LongPressReorderableDragStartListener(
                   key: ValueKey(visible[index].person.id),
                   index: index,
                   child: Padding(
