@@ -4,32 +4,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:lpinyin/lpinyin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'models/attendance.dart';
+import 'models/person.dart';
+import 'widgets/attendance_widgets.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
   'ROLLCALL_PERF',
   defaultValue: false,
 );
-
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (kDebugMode && _performanceDiagnostics) {
-    SchedulerBinding.instance.addTimingsCallback((timings) {
-      for (final timing in timings) {
-        if (timing.totalSpan >= const Duration(milliseconds: 50)) {
-          debugPrint(
-            '[rollcall][frame] '
-            'total=${timing.totalSpan.inMilliseconds}ms '
-            'build=${timing.buildDuration.inMilliseconds}ms '
-            'raster=${timing.rasterDuration.inMilliseconds}ms',
-          );
-        }
-      }
-    });
-  }
-  runApp(const RollCallApp());
-}
 
 class RollCallApp extends StatelessWidget {
   const RollCallApp({super.key});
@@ -76,105 +60,36 @@ class RollCallApp extends StatelessWidget {
   }
 }
 
-enum AttendanceStatus {
-  unmarked,
-  present,
-  absent,
-  leave,
-  personalLeave,
-  sickLeave,
-}
-
-extension AttendanceStatusUi on AttendanceStatus {
-  String get label => switch (this) {
-    AttendanceStatus.unmarked => '未点名',
-    AttendanceStatus.present => '正常',
-    AttendanceStatus.absent => '缺勤',
-    AttendanceStatus.leave => '公假',
-    AttendanceStatus.personalLeave => '事假',
-    AttendanceStatus.sickLeave => '病假',
-  };
-  Color get color => switch (this) {
-    AttendanceStatus.unmarked => const Color(0xFF77817B),
-    AttendanceStatus.present => const Color(0xFF198754),
-    AttendanceStatus.absent => const Color(0xFFD14C3E),
-    AttendanceStatus.leave => const Color(0xFFDA8610),
-    AttendanceStatus.personalLeave => const Color(0xFF8B5FBF),
-    AttendanceStatus.sickLeave => const Color(0xFF3D7DB8),
-  };
-  Color get softColor => switch (this) {
-    AttendanceStatus.unmarked => const Color(0xFFF0F2F0),
-    AttendanceStatus.present => const Color(0xFFE6F5EC),
-    AttendanceStatus.absent => const Color(0xFFFCEAE7),
-    AttendanceStatus.leave => const Color(0xFFFFF3DD),
-    AttendanceStatus.personalLeave => const Color(0xFFF2E9FA),
-    AttendanceStatus.sickLeave => const Color(0xFFE6F1FB),
-  };
-  IconData get icon => switch (this) {
-    AttendanceStatus.unmarked => Icons.remove_rounded,
-    AttendanceStatus.present => Icons.check_rounded,
-    AttendanceStatus.absent => Icons.close_rounded,
-    AttendanceStatus.leave => Icons.beach_access_rounded,
-    AttendanceStatus.personalLeave => Icons.person_outline_rounded,
-    AttendanceStatus.sickLeave => Icons.local_hospital_outlined,
-  };
-}
-
-bool _isAbsenceStatus(AttendanceStatus status) =>
-    status == AttendanceStatus.absent ||
-    status == AttendanceStatus.leave ||
-    status == AttendanceStatus.personalLeave ||
-    status == AttendanceStatus.sickLeave;
-
-bool _isLeaveStatus(AttendanceStatus status) =>
-    status == AttendanceStatus.leave ||
-    status == AttendanceStatus.personalLeave ||
-    status == AttendanceStatus.sickLeave;
-
-class Person {
-  Person({
-    required this.id,
-    required this.name,
-    this.status = AttendanceStatus.unmarked,
-  });
-  final int id;
-  final String name;
-  AttendanceStatus status;
-
-  late final String fullPinyin =
-      PinyinHelper.getPinyinE(name, separator: '').toLowerCase();
-  late final String pinyinInitials =
-      PinyinHelper.getShortPinyin(name).toLowerCase();
-
-  Map<String, Object> toJson() => {
-    'id': id,
-    'name': name,
-    'status': status.name,
-  };
-  factory Person.fromJson(Map<String, dynamic> json) => Person(
-    id: json['id'] as int,
-    name: json['name'] as String,
-    status: AttendanceStatus.values.firstWhere(
-      (status) => status.name == json['status'],
-      orElse: () => AttendanceStatus.unmarked,
-    ),
-  );
-}
-
 class _VisiblePerson {
   const _VisiblePerson({required this.person, required this.number});
-
   final Person person;
   final int number;
 }
-
-enum RosterFilter { all, unmarked, present, absent }
 
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
 
   @override
   State<RollCallPage> createState() => _RollCallPageState();
+}
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode && _performanceDiagnostics) {
+    SchedulerBinding.instance.addTimingsCallback((timings) {
+      for (final timing in timings) {
+        if (timing.totalSpan >= const Duration(milliseconds: 50)) {
+          debugPrint(
+            '[rollcall][frame] '
+            'total=${timing.totalSpan.inMilliseconds}ms '
+            'build=${timing.buildDuration.inMilliseconds}ms '
+            'raster=${timing.rasterDuration.inMilliseconds}ms',
+          );
+        }
+      }
+    });
+  }
+  runApp(const RollCallApp());
 }
 
 class _RollCallPageState extends State<RollCallPage>
@@ -284,17 +199,18 @@ class _RollCallPageState extends State<RollCallPage>
     return counts[status] ?? 0;
   }
 
-  int _countAbsentTypes() =>
-      _people.where((person) => person.status == AttendanceStatus.absent).length;
+  int _countAbsentTypes() => _people
+      .where((person) => person.status == AttendanceStatus.absent)
+      .length;
 
   int _countLeaveTypes() =>
-      _people.where((person) => _isLeaveStatus(person.status)).length;
+      _people.where((person) => isLeaveStatus(person.status)).length;
 
   List<_VisiblePerson> get _visiblePeople {
-    final keyword = _searchController.text
-        .trim()
-        .toLowerCase()
-        .replaceAll(' ', '');
+    final keyword = _searchController.text.trim().toLowerCase().replaceAll(
+      ' ',
+      '',
+    );
     final cached = _visiblePeopleCache;
     if (cached != null &&
         keyword == _visiblePeopleCacheKeyword &&
@@ -305,7 +221,8 @@ class _RollCallPageState extends State<RollCallPage>
     final visible = <_VisiblePerson>[];
     for (var index = 0; index < _people.length; index++) {
       final person = _people[index];
-      final searched = keyword.isEmpty ||
+      final searched =
+          keyword.isEmpty ||
           person.name.toLowerCase().contains(keyword) ||
           person.fullPinyin.contains(keyword) ||
           person.pinyinInitials.contains(keyword);
@@ -373,8 +290,7 @@ class _RollCallPageState extends State<RollCallPage>
               ),
             ),
           SimpleDialogOption(
-            onPressed: () =>
-                Navigator.pop(context, AttendanceStatus.unmarked),
+            onPressed: () => Navigator.pop(context, AttendanceStatus.unmarked),
             child: Row(
               children: [
                 Icon(
@@ -702,7 +618,7 @@ class _RollCallPageState extends State<RollCallPage>
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _AppMark(),
+            AppMark(),
             SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -969,7 +885,7 @@ class _RollCallPageState extends State<RollCallPage>
 
   Widget _buildRoster(bool isWide) {
     if (_people.isEmpty) {
-      return _EmptyState(onImport: _showImportDialog);
+      return EmptyState(onImport: _showImportDialog);
     }
     final visible = _visiblePeople;
     if (visible.isEmpty) {
@@ -981,7 +897,7 @@ class _RollCallPageState extends State<RollCallPage>
       padding: const EdgeInsets.only(bottom: 82),
       itemCount: visible.length,
       separatorBuilder: (_, _) => const SizedBox(height: 7),
-      itemBuilder: (context, index) => _PersonRow(
+      itemBuilder: (context, index) => PersonRow(
         person: visible[index].person,
         number: visible[index].number,
         selected: _selected.contains(visible[index].person.id),
@@ -1056,248 +972,6 @@ class _RollCallPageState extends State<RollCallPage>
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PersonRow extends StatelessWidget {
-  const _PersonRow({
-    required this.person,
-    required this.number,
-    required this.selected,
-    required this.selectionMode,
-    required this.wide,
-    required this.onToggleSelection,
-    required this.onStatus,
-  });
-  final Person person;
-  final int number;
-  final bool selected;
-  final bool selectionMode;
-  final bool wide;
-  final VoidCallback onToggleSelection;
-  final ValueChanged<AttendanceStatus> onStatus;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? const Color(0xFFE7F3EB) : Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: selectionMode ? onToggleSelection : null,
-        onLongPress: onToggleSelection,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 69),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF78AC8C)
-                  : const Color(0xFFE3E9E4),
-            ),
-          ),
-          child: Row(
-            children: [
-              if (selectionMode)
-                Checkbox(value: selected, onChanged: (_) => onToggleSelection())
-              else
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: person.status.softColor,
-                  foregroundColor: person.status.color,
-                  child: Text(
-                    person.name.characters.first,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      person.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '第 $number 号 · ${person.status.label}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: person.status.color,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (!selectionMode)
-              for (final status in [
-                AttendanceStatus.present,
-                AttendanceStatus.absent,
-              ])
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: _QuickStatusButton(
-                      status: status == AttendanceStatus.absent &&
-                              _isAbsenceStatus(person.status)
-                          ? person.status
-                          : status,
-                      active: status == AttendanceStatus.absent
-                          ? _isAbsenceStatus(person.status)
-                          : person.status == status,
-                      showLabel: wide,
-                      onTap: () => onStatus(status),
-                    ),
-                  ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickStatusButton extends StatelessWidget {
-  const _QuickStatusButton({
-    required this.status,
-    required this.active,
-    required this.showLabel,
-    required this.onTap,
-  });
-  final AttendanceStatus status;
-  final bool active;
-  final bool showLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: status.label,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          // Keep both animation endpoints finite. Animating from `null`
-          // (unbounded/content-sized) to a fixed width causes
-          // BoxConstraints.lerp to assert during window resizing.
-          width: showLabel ? 76 : 40,
-          height: 40,
-          padding: EdgeInsets.symmetric(horizontal: showLabel ? 10 : 0),
-          decoration: BoxDecoration(
-            color: active ? status.softColor : const Color(0xFFF4F6F4),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: active
-                  ? status.color.withValues(alpha: .45)
-                  : const Color(0xFFE5E9E6),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                status.icon,
-                size: 19,
-                color: active ? status.color : const Color(0xFF738078),
-              ),
-              if (showLabel) ...[
-                const SizedBox(width: 5),
-                Text(
-                  status.label,
-                  style: TextStyle(
-                    color: active ? status.color : const Color(0xFF56625B),
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onImport});
-  final VoidCallback onImport;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2F1E8),
-                      borderRadius: BorderRadius.circular(21),
-                    ),
-                    child: const Icon(
-                      Icons.format_list_bulleted_add,
-                      size: 33,
-                      color: Color(0xFF176B45),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '名单还是空的',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '一行一个名字，简单直接。',
-                    style: TextStyle(color: Color(0xFF718078)),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: onImport,
-                    icon: const Icon(Icons.upload_file_rounded),
-                    label: const Text('导入名单'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AppMark extends StatelessWidget {
-  const _AppMark();
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 35,
-      height: 35,
-      decoration: BoxDecoration(
-        color: const Color(0xFF176B45),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: const Icon(
-        Icons.how_to_reg_rounded,
-        color: Colors.white,
-        size: 21,
       ),
     );
   }
