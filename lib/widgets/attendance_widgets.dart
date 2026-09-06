@@ -30,7 +30,6 @@ class PersonRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: selectionMode ? onToggleSelection : null,
-        onLongPress: onToggleSelection,
         child: Container(
           constraints: const BoxConstraints(minHeight: 69),
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),

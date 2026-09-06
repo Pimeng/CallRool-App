@@ -451,6 +451,35 @@ class _RollCallPageState extends State<RollCallPage>
     });
   }
 
+  void _reorderPeople(int oldIndex, int newIndex) {
+    final visible = _visiblePeople;
+    if (oldIndex < 0 || oldIndex >= visible.length) return;
+
+    if (newIndex < 0 || newIndex >= visible.length || oldIndex == newIndex) {
+      return;
+    }
+
+    final visiblePeople = visible.map((item) => item.person).toList();
+    final moving = visiblePeople.removeAt(oldIndex);
+    visiblePeople.insert(newIndex, moving);
+
+    // A search/filter can hide people between two visible rows. Replace only
+    // the visible slots so hidden people keep their relative order and their
+    // attendance data stays attached to the same person.
+    final visibleIds = visible.map((item) => item.person.id).toSet();
+    var reorderedIndex = 0;
+    for (var index = 0; index < _people.length; index++) {
+      if (visibleIds.contains(_people[index].id)) {
+        _people[index] = visiblePeople[reorderedIndex++];
+      }
+    }
+
+    _invalidatePeopleCache();
+    setState(() {});
+    _save();
+    _toast('已将 ${moving.name} 调整到第 ${_people.indexOf(moving) + 1} 号');
+  }
+
   void _batchSetStatus(AttendanceStatus status) async {
     if (_selected.isEmpty) return;
     if (status == AttendanceStatus.absent) {
@@ -1074,22 +1103,48 @@ class _RollCallPageState extends State<RollCallPage>
         child: Text('没有匹配的人员', style: TextStyle(color: Color(0xFF718078))),
       );
     }
+    final list = _selectionMode
+        ? ListView.separated(
+            padding: const EdgeInsets.only(bottom: 82),
+            itemCount: visible.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 7),
+            itemBuilder: (context, index) =>
+                _buildPersonRow(visible[index], isWide),
+          )
+        : ReorderableListView.builder(
+            padding: const EdgeInsets.only(bottom: 82),
+            itemCount: visible.length,
+            buildDefaultDragHandles: false,
+            onReorderItem: _reorderPeople,
+            proxyDecorator: (child, _, _) => child,
+            itemBuilder: (context, index) =>
+                ReorderableDelayedDragStartListener(
+                  key: ValueKey(visible[index].person.id),
+                  index: index,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == visible.length - 1 ? 0 : 7,
+                    ),
+                    child: _buildPersonRow(visible[index], isWide),
+                  ),
+                ),
+          );
+
     return NotificationListener<ScrollNotification>(
       onNotification: _handleInnerScroll,
-      child: ListView.separated(
-        padding: const EdgeInsets.only(bottom: 82),
-        itemCount: visible.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 7),
-        itemBuilder: (context, index) => PersonRow(
-          person: visible[index].person,
-          number: visible[index].number,
-          selected: _selected.contains(visible[index].person.id),
-          selectionMode: _selectionMode,
-          wide: isWide,
-          onToggleSelection: () => _toggleSelection(visible[index].person),
-          onStatus: (status) => _setStatus(visible[index].person, status),
-        ),
-      ),
+      child: list,
+    );
+  }
+
+  Widget _buildPersonRow(_VisiblePerson item, bool isWide) {
+    return PersonRow(
+      person: item.person,
+      number: item.number,
+      selected: _selected.contains(item.person.id),
+      selectionMode: _selectionMode,
+      wide: isWide,
+      onToggleSelection: () => _toggleSelection(item.person),
+      onStatus: (status) => _setStatus(item.person, status),
     );
   }
 
