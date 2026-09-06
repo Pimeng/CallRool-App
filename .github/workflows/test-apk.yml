@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-and-build:
     runs-on: ubuntu-latest
@@ -21,6 +25,16 @@ jobs:
           flutter-version: 3.47.2
           cache: true
 
+      - name: Cache Pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -31,7 +45,7 @@ jobs:
         run: flutter test
 
       - name: Build test APK
-        run: flutter build apk --release
+        run: flutter build apk --release --target-platform android-arm64
         env:
           ORG_GRADLE_PROJECT_testPackage: "true"
 
