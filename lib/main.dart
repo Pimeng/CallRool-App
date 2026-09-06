@@ -42,7 +42,7 @@ class RollCallApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B45)),
-        scaffoldBackgroundColor: const Color(0xFFF3F6F2),
+        scaffoldBackgroundColor: const Color(0xFFF5F7F5),
         fontFamily: 'Microsoft YaHei',
         cardTheme: const CardThemeData(
           margin: EdgeInsets.zero,
@@ -63,6 +63,10 @@ class RollCallApp extends StatelessWidget {
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Color(0xFFE1E7E2)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF4E9A70), width: 1.5),
           ),
         ),
       ),
@@ -543,15 +547,25 @@ class _RollCallPageState extends State<RollCallPage>
         toolbarHeight: 62,
         titleSpacing: 16,
         scrolledUnderElevation: 0,
-        backgroundColor: const Color(0xFFF3F6F2),
+        backgroundColor: const Color(0xFFF5F7F5),
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             _AppMark(),
             SizedBox(width: 10),
-            Text(
-              '点名册',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '点名册',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  '课堂考勤管理',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF718078)),
+                ),
+              ],
             ),
           ],
         ),
@@ -602,7 +616,7 @@ class _RollCallPageState extends State<RollCallPage>
                       children: [
                         const SizedBox(height: 14),
                         _buildStats(),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         _buildToolbar(isWide),
                         const SizedBox(height: 10),
                         Expanded(child: _buildRoster(isWide)),
@@ -624,9 +638,13 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Widget _buildStats() {
-    final useFourColumns = MediaQuery.sizeOf(context).width >= 600;
     final items = [
-      ('全部', _people.length, const Color(0xFF315C49), Icons.groups_2_rounded),
+      (
+        '未点名',
+        _count(AttendanceStatus.unmarked),
+        AttendanceStatus.unmarked.color,
+        Icons.pending_actions_rounded,
+      ),
       (
         '正常',
         _count(AttendanceStatus.present),
@@ -649,9 +667,9 @@ class _RollCallPageState extends State<RollCallPage>
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: useFourColumns ? 4 : 2,
-        childAspectRatio: useFourColumns ? 2.05 : 2.25,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        childAspectRatio: 2.35,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -664,40 +682,45 @@ class _RollCallPageState extends State<RollCallPage>
             side: const BorderSide(color: Color(0xFFE3E9E4)),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 37,
-                  height: 37,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
                     color: item.$3.withValues(alpha: .11),
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Icon(item.$4, size: 20, color: item.$3),
+                  child: Icon(item.$4, size: 15, color: item.$3),
                 ),
-                const SizedBox(width: 10),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${item.$2}',
-                      style: const TextStyle(
-                        fontSize: 21,
-                        height: 1,
-                        fontWeight: FontWeight.w800,
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '${item.$2}',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.$1,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF718078),
+                      const SizedBox(width: 4),
+                      Text(
+                        item.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF718078),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -710,7 +733,7 @@ class _RollCallPageState extends State<RollCallPage>
   Widget _buildToolbar(bool isWide) {
     final filters = [
       (RosterFilter.all, '全部'),
-      (RosterFilter.unmarked, '未点'),
+      (RosterFilter.unmarked, '未点名'),
       (RosterFilter.present, '正常'),
       (RosterFilter.absent, '缺勤'),
       (RosterFilter.leave, '公假'),
@@ -757,6 +780,14 @@ class _RollCallPageState extends State<RollCallPage>
     if (isWide) {
       return Row(
         children: [
+          const Text(
+            '名单',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF526159),
+            ),
+          ),
+          const SizedBox(width: 12),
           SizedBox(width: 260, child: search),
           const SizedBox(width: 12),
           Expanded(child: chips),
