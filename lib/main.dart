@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:lpinyin/lpinyin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
@@ -38,7 +39,7 @@ class RollCallApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
-      title: '点名册',
+      title: '快捷考勤',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B45)),
@@ -134,6 +135,11 @@ class Person {
   final int id;
   final String name;
   AttendanceStatus status;
+
+  late final String fullPinyin =
+      PinyinHelper.getPinyinE(name, separator: '').toLowerCase();
+  late final String pinyinInitials =
+      PinyinHelper.getShortPinyin(name).toLowerCase();
 
   Map<String, Object> toJson() => {
     'id': id,
@@ -259,7 +265,10 @@ class _RollCallPageState extends State<RollCallPage>
       .length;
 
   List<_VisiblePerson> get _visiblePeople {
-    final keyword = _searchController.text.trim().toLowerCase();
+    final keyword = _searchController.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(' ', '');
     final cached = _visiblePeopleCache;
     if (cached != null &&
         keyword == _visiblePeopleCacheKeyword &&
@@ -270,8 +279,10 @@ class _RollCallPageState extends State<RollCallPage>
     final visible = <_VisiblePerson>[];
     for (var index = 0; index < _people.length; index++) {
       final person = _people[index];
-      final searched =
-          keyword.isEmpty || person.name.toLowerCase().contains(keyword);
+      final searched = keyword.isEmpty ||
+          person.name.toLowerCase().contains(keyword) ||
+          person.fullPinyin.contains(keyword) ||
+          person.pinyinInitials.contains(keyword);
       final filtered = switch (_filter) {
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
@@ -645,11 +656,11 @@ class _RollCallPageState extends State<RollCallPage>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  '点名册',
+                  '快捷考勤',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                 ),
                 Text(
-                  '课堂考勤管理',
+                  '班委快捷考勤APP',
                   style: TextStyle(fontSize: 11, color: Color(0xFF718078)),
                 ),
               ],
