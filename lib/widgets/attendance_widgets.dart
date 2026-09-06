@@ -87,18 +87,21 @@ class PersonRow extends StatelessWidget {
                 ])
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
-                    child: QuickStatusButton(
-                      status:
-                          status == AttendanceStatus.absent &&
-                              isAbsenceStatus(person.status)
-                          ? person.status
-                          : status,
-                      active: status == AttendanceStatus.absent
-                          ? isAbsenceStatus(person.status)
-                          : person.status == status,
-                      showLabel: wide,
-                      onTap: () => onStatus(status),
-                    ),
+                    child: status == AttendanceStatus.absent
+                        ? AbsenceStatusButton(
+                            status: isAbsenceStatus(person.status)
+                                ? person.status
+                                : AttendanceStatus.absent,
+                            active: isAbsenceStatus(person.status),
+                            showLabel: wide,
+                            onSelected: onStatus,
+                          )
+                        : QuickStatusButton(
+                            status: status,
+                            active: person.status == status,
+                            showLabel: wide,
+                            onTap: () => onStatus(status),
+                          ),
                   ),
             ],
           ),
@@ -119,7 +122,7 @@ class QuickStatusButton extends StatelessWidget {
   final AttendanceStatus status;
   final bool active;
   final bool showLabel;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -165,6 +168,171 @@ class QuickStatusButton extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Displays absence-related actions in a popup anchored to this button.
+class AbsenceStatusButton extends StatelessWidget {
+  const AbsenceStatusButton({
+    super.key,
+    required this.status,
+    required this.active,
+    required this.showLabel,
+    required this.onSelected,
+  });
+
+  final AttendanceStatus status;
+  final bool active;
+  final bool showLabel;
+  final ValueChanged<AttendanceStatus> onSelected;
+
+  static const _options = [
+    AttendanceStatus.absent,
+    AttendanceStatus.leave,
+    AttendanceStatus.personalLeave,
+    AttendanceStatus.sickLeave,
+    AttendanceStatus.unmarked,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (buttonContext) => Tooltip(
+        message: '选择缺勤类型',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) => _showMenu(buttonContext, details),
+          child: QuickStatusButton(
+            status: status,
+            active: active,
+            showLabel: showLabel,
+            onTap: null,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMenu(
+    BuildContext buttonContext,
+    TapUpDetails tapDetails,
+  ) async {
+    final overlay = Overlay.of(buttonContext);
+    final overlayBox = overlay.context.findRenderObject();
+    if (overlayBox is! RenderBox) return;
+
+    final buttonTopLeft = tapDetails.globalPosition - tapDetails.localPosition;
+    final buttonTopLeftInOverlay = overlayBox.globalToLocal(buttonTopLeft);
+    final buttonRect = buttonTopLeftInOverlay & Size(showLabel ? 76 : 40, 40);
+
+    const menuWidth = 156.0;
+    const menuHeight = 5 * 44.0;
+    const gap = 6.0;
+    const screenPadding = 8.0;
+    final screenSize = overlayBox.size;
+    final canOpenBelow =
+        buttonRect.bottom + gap + menuHeight <=
+        screenSize.height - screenPadding;
+    final canOpenAbove = buttonRect.top - gap - menuHeight >= screenPadding;
+    final openAbove =
+        !canOpenBelow &&
+        (canOpenAbove ||
+            buttonRect.top > screenSize.height - buttonRect.bottom);
+    final menuTop =
+        (openAbove
+                ? buttonRect.top - gap - menuHeight
+                : buttonRect.bottom + gap)
+            .clamp(
+              screenPadding,
+              screenSize.height - menuHeight - screenPadding,
+            )
+            .toDouble();
+    final menuLeft = (buttonRect.right - menuWidth)
+        .clamp(screenPadding, screenSize.width - menuWidth - screenPadding)
+        .toDouble();
+
+    final selected = await showGeneralDialog<AttendanceStatus>(
+      context: buttonContext,
+      useRootNavigator: false,
+      barrierDismissible: true,
+      barrierLabel: '关闭缺勤类型选择',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return SizedBox(
+          width: menuWidth,
+          height: menuHeight,
+          child: Material(
+            elevation: 5,
+            color: Colors.white,
+            clipBehavior: Clip.antiAlias,
+            borderRadius: BorderRadius.circular(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final option in _options)
+                  SizedBox(
+                    height: 44,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(option),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        child: Row(
+                          children: [
+                            Icon(option.icon, size: 19, color: option.color),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                option == AttendanceStatus.unmarked
+                                    ? '重置'
+                                    : option.label,
+                              ),
+                            ),
+                            if (option == status && active)
+                              Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: option.color,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) => Stack(
+            children: [
+              Positioned(
+                left: menuLeft,
+                top: openAbove ? null : menuTop,
+                bottom: openAbove
+                    ? screenSize.height - menuTop - menuHeight
+                    : null,
+                width: menuWidth,
+                child: ClipRect(
+                  child: Align(
+                    alignment: openAbove
+                        ? Alignment.bottomCenter
+                        : Alignment.topCenter,
+                    heightFactor: animation.value,
+                    child: Opacity(opacity: animation.value, child: child),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected != null) onSelected(selected);
+  }
 }
 
 class EmptyState extends StatelessWidget {

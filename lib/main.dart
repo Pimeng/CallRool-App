@@ -355,52 +355,7 @@ class _RollCallPageState extends State<RollCallPage>
       );
   }
 
-  Future<AttendanceStatus?> _chooseAbsenceType() async {
-    return showDialog<AttendanceStatus>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('选择缺勤类型'),
-        children: [
-          for (final status in [
-            AttendanceStatus.absent,
-            AttendanceStatus.leave,
-            AttendanceStatus.personalLeave,
-            AttendanceStatus.sickLeave,
-          ])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, status),
-              child: Row(
-                children: [
-                  Icon(status.icon, color: status.color),
-                  const SizedBox(width: 12),
-                  Text(status.label),
-                ],
-              ),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, AttendanceStatus.unmarked),
-            child: Row(
-              children: [
-                Icon(
-                  AttendanceStatus.unmarked.icon,
-                  color: AttendanceStatus.unmarked.color,
-                ),
-                const SizedBox(width: 12),
-                const Text('重置'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _setStatus(Person person, AttendanceStatus status) async {
-    if (status == AttendanceStatus.absent) {
-      final selected = await _chooseAbsenceType();
-      if (selected == null || !mounted) return;
-      status = selected;
-    }
+  void _setStatus(Person person, AttendanceStatus status) {
     _invalidatePeopleCache();
     setState(
       () => person.status = person.status == status
@@ -481,13 +436,8 @@ class _RollCallPageState extends State<RollCallPage>
     _toast('已将 ${moving.name} 调整到第 ${_people.indexOf(moving) + 1} 号');
   }
 
-  void _batchSetStatus(AttendanceStatus status) async {
+  void _batchSetStatus(AttendanceStatus status) {
     if (_selected.isEmpty) return;
-    if (status == AttendanceStatus.absent) {
-      final selected = await _chooseAbsenceType();
-      if (selected == null || !mounted) return;
-      status = selected;
-    }
     _invalidatePeopleCache();
     setState(() {
       for (final person in _people.where(
@@ -1301,11 +1251,18 @@ class _RollCallPageState extends State<RollCallPage>
               ])
                 Padding(
                   padding: const EdgeInsets.only(left: 5),
-                  child: IconButton.filledTonal(
-                    tooltip: status.label,
-                    onPressed: () => _batchSetStatus(status),
-                    icon: Icon(status.icon, color: status.color),
-                  ),
+                  child: status == AttendanceStatus.absent
+                      ? AbsenceStatusButton(
+                          status: AttendanceStatus.absent,
+                          active: false,
+                          showLabel: false,
+                          onSelected: _batchSetStatus,
+                        )
+                      : IconButton.filledTonal(
+                          tooltip: status.label,
+                          onPressed: () => _batchSetStatus(status),
+                          icon: Icon(status.icon, color: status.color),
+                        ),
                 ),
               IconButton(
                 tooltip: '删除',
