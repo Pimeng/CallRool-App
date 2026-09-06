@@ -180,6 +180,18 @@ class RollCallPage extends StatefulWidget {
 class _RollCallPageState extends State<RollCallPage>
     with WidgetsBindingObserver {
   static const _storageKey = 'roll_call_people_v1';
+  static const _defaultNames = [
+    '刘一',
+    '陈二',
+    '张三',
+    '李四',
+    '王五',
+    '赵六',
+    '孙七',
+    '周八',
+    '吴九',
+    '郑十',
+  ];
   final _searchController = TextEditingController();
   final List<Person> _people = [];
   final Set<int> _selected = {};
@@ -224,7 +236,15 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
-    if (raw != null) {
+    if (raw == null) {
+      _people.addAll(
+        _defaultNames.asMap().entries.map(
+          (entry) => Person(id: entry.key + 1, name: entry.value),
+        ),
+      );
+      _nextId = _people.length + 1;
+      await _save();
+    } else {
       try {
         final list = jsonDecode(raw) as List<dynamic>;
         _people.addAll(
