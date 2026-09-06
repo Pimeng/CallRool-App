@@ -513,11 +513,6 @@ class _RollCallPageState extends State<RollCallPage> {
                     ),
                     child: Column(
                       children: [
-                        _Header(
-                          peopleCount: _people.length,
-                          onImport: _showImportDialog,
-                          onExport: _exportRoster,
-                        ),
                         const SizedBox(height: 14),
                         _buildStats(),
                         const SizedBox(height: 14),
@@ -768,54 +763,6 @@ class _RollCallPageState extends State<RollCallPage> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.peopleCount,
-    required this.onImport,
-    required this.onExport,
-  });
-  final int peopleCount;
-  final VoidCallback onImport;
-  final VoidCallback onExport;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '今天要点谁？',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                peopleCount == 0 ? '导入名单，几秒开始。' : '点一下即完成标记。',
-                style: const TextStyle(color: Color(0xFF68736C)),
-              ),
-            ],
-          ),
-        ),
-        if (MediaQuery.sizeOf(context).width >= 600) ...[
-          OutlinedButton.icon(
-            onPressed: onImport,
-            icon: const Icon(Icons.upload_file_rounded),
-            label: const Text('导入'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: peopleCount == 0 ? null : onExport,
-            icon: const Icon(Icons.download_rounded),
-            label: const Text('导出'),
-          ),
-        ],
-      ],
     );
   }
 }
