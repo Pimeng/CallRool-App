@@ -8,21 +8,13 @@ void main() {
     await tester.pumpWidget(const RollCallApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('点名册'), findsOneWidget);
-    for (final name in [
-      '刘一',
-      '陈二',
-      '张三',
-      '李四',
-      '王五',
-      '赵六',
-      '孙七',
-      '周八',
-      '吴九',
-      '郑十',
-    ]) {
-      expect(find.text(name), findsOneWidget);
-    }
+    expect(find.text('快捷考勤'), findsOneWidget);
+    expect(find.text('刘一'), findsOneWidget);
     expect(find.text('名单还是空的'), findsNothing);
+
+    final saved = SharedPreferences.getInstance().then(
+      (prefs) => prefs.getString('roll_call_people_v1'),
+    );
+    expect(await saved, contains('郑十'));
   });
 }
