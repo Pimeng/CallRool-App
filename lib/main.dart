@@ -9,8 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/attendance.dart';
+import 'models/course_schedule.dart';
 import 'models/person.dart';
+import 'services/wakeup_schedule_service.dart';
 import 'widgets/attendance_widgets.dart';
+import 'widgets/wakeup_schedule_dialog.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
   'ROLLCALL_PERF',
@@ -141,6 +144,9 @@ class _RollCallPageState extends State<RollCallPage>
     with WidgetsBindingObserver {
   static const _storageKey = 'roll_call_people_v1';
   static const _lastModifiedStorageKey = 'roll_call_last_modified_v1';
+  static const _wakeUpAuthTokenKey = 'wakeup_auth_token_v1';
+  static const _wakeUpScheduleDataKey = 'wakeup_schedule_data_v1';
+  static const _wakeUpScheduleSyncedAtKey = 'wakeup_schedule_synced_at_v1';
   static const _defaultNames = [
     '刘一',
     '陈二',
@@ -157,6 +163,7 @@ class _RollCallPageState extends State<RollCallPage>
   final _topSearchFocusNode = FocusNode();
   final _rosterScrollController = ScrollController();
   final _overviewKey = GlobalKey();
+  final _wakeUpScheduleService = const WakeUpScheduleService();
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
@@ -173,6 +180,8 @@ class _RollCallPageState extends State<RollCallPage>
   ScrollPosition? _innerScrollPosition;
   int _nextId = 1;
   DateTime? _lastModifiedAt;
+  WakeUpSchedule? _wakeUpSchedule;
+  DateTime? _wakeUpScheduleSyncedAt;
 
   @override
   void initState() {
@@ -313,6 +322,18 @@ class _RollCallPageState extends State<RollCallPage>
     _lastModifiedAt = DateTime.tryParse(
       prefs.getString(_lastModifiedStorageKey) ?? '',
     );
+    final cachedSchedule = prefs.getString(_wakeUpScheduleDataKey);
+    if (cachedSchedule != null && cachedSchedule.isNotEmpty) {
+      try {
+        _wakeUpSchedule = WakeUpSchedule.parse(cachedSchedule);
+        _wakeUpScheduleSyncedAt = DateTime.tryParse(
+          prefs.getString(_wakeUpScheduleSyncedAtKey) ?? '',
+        );
+      } on FormatException {
+        _wakeUpSchedule = null;
+        _wakeUpScheduleSyncedAt = null;
+      }
+    }
     if (raw == null) {
       _people.addAll(
         _defaultNames.asMap().entries.map(
@@ -814,6 +835,96 @@ class _RollCallPageState extends State<RollCallPage>
     if (uri != null) _toast('名单已导出');
   }
 
+  String _formatCompactDateTime(DateTime value) {
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${twoDigits(value.month)}-${twoDigits(value.day)} '
+        '${twoDigits(value.hour)}:${twoDigits(value.minute)}';
+  }
+
+  String? get _wakeUpScheduleLabel {
+    final schedule = _wakeUpSchedule;
+    if (schedule == null) return null;
+    final syncedAt = _wakeUpScheduleSyncedAt;
+    return syncedAt == null
+        ? '已同步：${schedule.name}'
+        : '已同步：${schedule.name} · ${_formatCompactDateTime(syncedAt)}';
+  }
+
+  Future<void> _syncWakeUpSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final credentials = await showDialog<WakeUpScheduleCredentials>(
+      context: context,
+      builder: (context) => WakeUpScheduleDialog(
+        initialAuthToken: prefs.getString(_wakeUpAuthTokenKey) ?? '',
+        currentScheduleLabel: _wakeUpScheduleLabel,
+      ),
+    );
+    if (credentials == null) return;
+
+    await prefs.setString(_wakeUpAuthTokenKey, credentials.authToken);
+    _toast('正在同步课程表…');
+    try {
+      final shareData = await _wakeUpScheduleService.fetchShareData(
+        authToken: credentials.authToken,
+        shareCode: credentials.shareCode,
+      );
+      final schedule = WakeUpSchedule.parse(shareData);
+      final syncedAt = DateTime.now();
+      await Future.wait([
+        prefs.setString(_wakeUpScheduleDataKey, shareData),
+        prefs.setString(_wakeUpScheduleSyncedAtKey, syncedAt.toIso8601String()),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _wakeUpSchedule = schedule;
+        _wakeUpScheduleSyncedAt = syncedAt;
+      });
+      _toast('课程表已同步：${schedule.name}');
+    } on WakeUpScheduleException catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('课程表同步失败'),
+          content: Text(error.message),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } on FormatException {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('课程表同步失败'),
+          content: const Text('课程表数据不完整或格式不受支持。'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  List<String> _currentCourseSummary(DateTime now) {
+    final schedule = _wakeUpSchedule;
+    if (schedule == null) return const [];
+    final courses = schedule.currentCoursesAt(now);
+    if (courses.isEmpty) return const ['当前课程：当前时段无课程'];
+    return [
+      '当前课程：${courses.first.summary}',
+      for (final course in courses.skip(1)) '同时课程：${course.summary}',
+    ];
+  }
+
   Future<void> _copyAttendanceSummary() async {
     if (_people.isEmpty) return;
 
@@ -869,6 +980,7 @@ class _RollCallPageState extends State<RollCallPage>
         '${twoDigits(now.hour)}:${twoDigits(now.minute)}:${twoDigits(now.second)}';
     final content = [
       '$timestamp 考勤情况：',
+      ..._currentCourseSummary(now),
       '正常出勤：${present.join('、')}',
       '缺勤：${absent.join('、')}',
       '公假：${leave.join('、')}',
@@ -1165,6 +1277,8 @@ class _RollCallPageState extends State<RollCallPage>
                     _exportRoster();
                   case 'mark_unmarked_absent':
                     _markUnmarkedAbsent();
+                  case 'sync_schedule':
+                    _syncWakeUpSchedule();
                 }
               },
               itemBuilder: (context) => [
@@ -1188,6 +1302,16 @@ class _RollCallPageState extends State<RollCallPage>
                   child: const ListTile(
                     leading: Icon(Icons.assignment_late_outlined),
                     title: Text('未点名全部标记为缺勤'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'sync_schedule',
+                  child: ListTile(
+                    leading: const Icon(Icons.calendar_month_rounded),
+                    title: const Text('同步 WakeUp 课程表'),
+                    subtitle: _wakeUpSchedule == null
+                        ? const Text('尚未配置')
+                        : Text(_wakeUpSchedule!.name),
                   ),
                 ),
               ],

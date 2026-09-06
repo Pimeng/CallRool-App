@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +16,43 @@ Future<void> _pumpApp(WidgetTester tester, {Size? size}) async {
   SharedPreferences.setMockInitialValues({});
   await tester.pumpWidget(const RollCallApp());
   await tester.pumpAndSettle();
+}
+
+String _scheduleForToday() {
+  final now = DateTime.now();
+  final monday = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).subtract(Duration(days: now.weekday - 1));
+  final startDate = '${monday.year}-${monday.month}-${monday.day}';
+  return [
+    jsonEncode({'courseLen': 1440, 'id': 2, 'name': '全天'}),
+    jsonEncode([
+      {'endTime': '23:59', 'node': 1, 'startTime': '00:00', 'timeTable': 2},
+    ]),
+    jsonEncode({'maxWeek': 20, 'startDate': startDate, 'tableName': '测试课表'}),
+    jsonEncode([
+      {'courseName': '当前测试课程', 'id': 1, 'tableId': 2},
+    ]),
+    jsonEncode([
+      {
+        'day': now.weekday,
+        'endTime': '',
+        'endWeek': 20,
+        'id': 1,
+        'ownTime': false,
+        'room': '测试教室',
+        'startNode': 1,
+        'startTime': '',
+        'startWeek': 1,
+        'step': 1,
+        'tableId': 2,
+        'teacher': '测试教师',
+        'type': 0,
+      },
+    ]),
+  ].join('\n');
 }
 
 void main() {
@@ -68,6 +108,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('还有 10 人未点名'), findsOneWidget);
     expect(find.text('继续复制'), findsOneWidget);
+  });
+
+  testWidgets('复制考勤时写入当前课程', (tester) async {
+    String? copiedText;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText =
+            (call.arguments as Map<Object?, Object?>)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    SharedPreferences.setMockInitialValues({
+      'wakeup_schedule_data_v1': _scheduleForToday(),
+    });
+    await tester.pumpWidget(const RollCallApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('继续复制'));
+    await tester.pumpAndSettle();
+
+    expect(copiedText, contains('当前课程：当前测试课程｜测试教师｜测试教室｜00:00-23:59'));
+  });
+
+  testWidgets('课程表同步要求手动输入 shareCode', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('名单操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('同步 WakeUp 课程表'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
+    expect(find.text('authToken'), findsOneWidget);
+    expect(find.text('shareCode'), findsOneWidget);
+    expect(find.text('每次同步手动填写，不会保存'), findsOneWidget);
   });
 
   testWidgets('替换名单需要二次确认且追加是主操作', (tester) async {
