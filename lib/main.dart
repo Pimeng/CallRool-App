@@ -126,6 +126,11 @@ bool _isAbsenceStatus(AttendanceStatus status) =>
     status == AttendanceStatus.personalLeave ||
     status == AttendanceStatus.sickLeave;
 
+bool _isLeaveStatus(AttendanceStatus status) =>
+    status == AttendanceStatus.leave ||
+    status == AttendanceStatus.personalLeave ||
+    status == AttendanceStatus.sickLeave;
+
 class Person {
   Person({
     required this.id,
@@ -259,10 +264,11 @@ class _RollCallPageState extends State<RollCallPage>
     return counts[status] ?? 0;
   }
 
-  int _countAbsentTypes() => _people
-      .where((person) => person.status != AttendanceStatus.unmarked)
-      .where((person) => person.status != AttendanceStatus.present)
-      .length;
+  int _countAbsentTypes() =>
+      _people.where((person) => person.status == AttendanceStatus.absent).length;
+
+  int _countLeaveTypes() =>
+      _people.where((person) => _isLeaveStatus(person.status)).length;
 
   List<_VisiblePerson> get _visiblePeople {
     final keyword = _searchController.text
@@ -391,6 +397,33 @@ class _RollCallPageState extends State<RollCallPage>
   void _enterSelectionMode() {
     setState(() {
       _selected.clear();
+      _selectionMode = true;
+    });
+  }
+
+  bool get _allVisibleSelected {
+    final ids = _visiblePeople.map((item) => item.person.id).toSet();
+    return ids.isNotEmpty && ids.every(_selected.contains);
+  }
+
+  void _selectAllVisible() {
+    final ids = _visiblePeople.map((item) => item.person.id).toSet();
+    setState(() {
+      if (ids.isNotEmpty && ids.every(_selected.contains)) {
+        _selected.removeAll(ids);
+      } else {
+        _selected.addAll(ids);
+      }
+      _selectionMode = true;
+    });
+  }
+
+  void _invertSelectionVisible() {
+    final ids = _visiblePeople.map((item) => item.person.id).toSet();
+    setState(() {
+      for (final id in ids) {
+        if (!_selected.add(id)) _selected.remove(id);
+      }
       _selectionMode = true;
     });
   }
@@ -739,7 +772,7 @@ class _RollCallPageState extends State<RollCallPage>
     final items = [
       (
         '未点名',
-        _count(AttendanceStatus.unmarked),
+        '${_count(AttendanceStatus.unmarked)}/${_people.length}',
         AttendanceStatus.unmarked.color,
         Icons.pending_actions_rounded,
       ),
@@ -754,6 +787,12 @@ class _RollCallPageState extends State<RollCallPage>
         _countAbsentTypes(),
         AttendanceStatus.absent.color,
         Icons.cancel_rounded,
+      ),
+      (
+        '请假',
+        _countLeaveTypes(),
+        AttendanceStatus.leave.color,
+        Icons.beach_access_rounded,
       ),
     ];
     return GridView.builder(
@@ -958,6 +997,22 @@ class _RollCallPageState extends State<RollCallPage>
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              IconButton(
+                onPressed: _selectAllVisible,
+                tooltip: _allVisibleSelected ? '全不选' : '全选',
+                color: Colors.white,
+                icon: Icon(
+                  _allVisibleSelected
+                      ? Icons.deselect_rounded
+                      : Icons.select_all_rounded,
+                ),
+              ),
+              IconButton(
+                onPressed: _invertSelectionVisible,
+                tooltip: '反选',
+                color: Colors.white,
+                icon: const Icon(Icons.flip_to_back_rounded),
               ),
               const Spacer(),
               for (final status in [
