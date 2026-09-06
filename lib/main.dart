@@ -424,10 +424,15 @@ class _RollCallPageState extends State<RollCallPage>
     });
   }
 
-  void _enterSelectionMode() {
+  void _toggleSelectionMode() {
     setState(() {
-      _selected.clear();
-      _selectionMode = true;
+      if (_selectionMode) {
+        _selected.clear();
+        _selectionMode = false;
+      } else {
+        _selected.clear();
+        _selectionMode = true;
+      }
     });
   }
 
@@ -1210,29 +1215,28 @@ class _RollCallPageState extends State<RollCallPage>
           const SizedBox(width: 12),
           SizedBox(width: 260, child: search),
           const Spacer(),
-          TextButton.icon(
-            onPressed: _enterSelectionMode,
-            icon: const Icon(Icons.checklist_rounded),
-            label: const Text('批量'),
-          ),
         ],
       );
     }
-    return Row(
-      children: [
-        Expanded(child: search),
-        IconButton(
-          tooltip: '批量选择',
-          onPressed: _enterSelectionMode,
-          icon: const Icon(Icons.checklist_rounded),
-        ),
-      ],
-    );
+    return Row(children: [Expanded(child: search)]);
   }
 
   Widget _buildFilterToolbar(bool isWide) {
     final chips = _buildFilterChips();
-    if (!isWide) return chips;
+    if (!isWide) {
+      return Row(
+        children: [
+          Expanded(child: chips),
+          IconButton(
+            tooltip: _selectionMode ? '退出批量' : '批量选择',
+            onPressed: _toggleSelectionMode,
+            icon: Icon(
+              _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
+            ),
+          ),
+        ],
+      );
+    }
 
     return Row(
       children: [
@@ -1245,6 +1249,13 @@ class _RollCallPageState extends State<RollCallPage>
         ),
         const SizedBox(width: 12),
         Expanded(child: chips),
+        TextButton.icon(
+          onPressed: _toggleSelectionMode,
+          icon: Icon(
+            _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
+          ),
+          label: Text(_selectionMode ? '退出批量' : '批量'),
+        ),
       ],
     );
   }
