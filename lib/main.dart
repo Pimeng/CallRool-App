@@ -140,7 +140,7 @@ class _RollCallPageState extends State<RollCallPage>
   static const _wakeUpAuthTokenKey = 'wakeup_auth_token_v1';
   static const _wakeUpScheduleDataKey = 'wakeup_schedule_data_v1';
   static const _wakeUpScheduleSyncedAtKey = 'wakeup_schedule_synced_at_v1';
-  static const _attendanceCopyTemplateKey = 'attendance_copy_template_v1';
+  static const _attendanceCopyTemplateKey = 'attendance_copy_template_v2';
   static const _defaultNames = [
     '刘一',
     '陈二',
@@ -926,10 +926,13 @@ class _RollCallPageState extends State<RollCallPage>
   Map<String, String> _copyTemplateValues(DateTime now) {
     final schedule = _wakeUpSchedule;
     final courses = schedule?.currentCoursesAt(now) ?? const <CurrentCourse>[];
-    final leave = _people
-        .where((person) => isLeaveStatus(person.status))
-        .map((person) => '${person.name}（${person.status.label}）')
+    String namesWhere(bool Function(AttendanceStatus status) matches) => _people
+        .where((person) => matches(person.status))
+        .map((person) => person.name)
         .join('、');
+
+    String countWhere(bool Function(AttendanceStatus status) matches) =>
+        _people.where((person) => matches(person.status)).length.toString();
 
     String courseValue(String Function(CurrentCourse course) select) {
       if (schedule == null || courses.isEmpty) return '';
@@ -948,7 +951,14 @@ class _RollCallPageState extends State<RollCallPage>
           .where((person) => isActuallyPresentStatus(person.status))
           .length
           .toString(),
-      '请假': leave.isEmpty ? '无' : leave,
+      '请假名单': namesWhere(isLeaveStatus),
+      '请假人数': countWhere(isLeaveStatus),
+      '旷课名单': namesWhere((status) => status == AttendanceStatus.truancy),
+      '旷课人数': countWhere((status) => status == AttendanceStatus.truancy),
+      '迟到名单': namesWhere((status) => status == AttendanceStatus.late),
+      '迟到人数': countWhere((status) => status == AttendanceStatus.late),
+      '早退名单': namesWhere((status) => status == AttendanceStatus.earlyLeave),
+      '早退人数': countWhere((status) => status == AttendanceStatus.earlyLeave),
       '教室': courseValue((course) => course.room),
     };
   }
