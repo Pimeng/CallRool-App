@@ -19,6 +19,7 @@ env:
 
 jobs:
   release:
+    if: github.repository == 'Pimeng/CallRool-App' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -100,8 +101,35 @@ jobs:
         if: steps.version.outputs.should_release == 'true'
         run: flutter test
 
+      - name: Restore release signing key
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required signing secret: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          keytool -exportcert -keystore "$RUNNER_TEMP/release.jks" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" \
+            -file "$RUNNER_TEMP/release-cert.der"
+
       - name: Build split APKs
         if: steps.version.outputs.should_release == 'true'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release --split-per-abi
 
       - name: Stage split APKs
@@ -118,6 +146,11 @@ jobs:
 
       - name: Build universal APK
         if: steps.version.outputs.should_release == 'true'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Stage universal APK
@@ -125,6 +158,30 @@ jobs:
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk \
             "release-artifacts/CallRool-${{ steps.version.outputs.version }}-universal.apk"
+
+      - name: Verify APK signing certificates
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          expected="$(sha256sum "$RUNNER_TEMP/release-cert.der" | cut -d ' ' -f 1)"
+          echo "Signing certificate SHA-256: $expected" > release-artifacts/signing-certificate.txt
+          for apk in release-artifacts/*.apk; do
+            actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::Signing certificate mismatch: $apk"
+              exit 1
+            fi
+            echo "$(basename "$apk"): verified" >> release-artifacts/signing-certificate.txt
+          done
+          cat release-artifacts/signing-certificate.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing files
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/release-cert.der"
 
       - name: Prepare release notes
         if: steps.version.outputs.should_release == 'true'
@@ -144,7 +201,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
-            release-artifacts/*.apk \
+            release-artifacts/*.apk release-artifacts/signing-certificate.txt \
             --target "$GITHUB_SHA" \
             --title "快捷考勤喵 ${{ steps.version.outputs.version }}" \
             --notes-file release-notes.md
