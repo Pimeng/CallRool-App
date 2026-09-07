@@ -387,7 +387,7 @@ class _RollCallPageState extends State<RollCallPage>
     return counts[status] ?? 0;
   }
 
-  int _countAbsentTypes() =>
+  int _countAttendanceIssues() =>
       _people.where((person) => isAttendanceIssueStatus(person.status)).length;
 
   int _countLeaveTypes() =>
@@ -417,7 +417,7 @@ class _RollCallPageState extends State<RollCallPage>
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
         RosterFilter.present => person.status == AttendanceStatus.present,
-        RosterFilter.absent => isAttendanceIssueStatus(person.status),
+        RosterFilter.issue => isAttendanceIssueStatus(person.status),
         RosterFilter.leave => isLeaveStatus(person.status),
       };
       if (searched && filtered) {
@@ -439,7 +439,7 @@ class _RollCallPageState extends State<RollCallPage>
     RosterFilter.all => '全部',
     RosterFilter.unmarked => '未点名',
     RosterFilter.present => '正常',
-    RosterFilter.absent => '缺勤',
+    RosterFilter.issue => '异常',
     RosterFilter.leave => '请假',
   };
 
@@ -638,7 +638,7 @@ class _RollCallPageState extends State<RollCallPage>
     await _save();
   }
 
-  Future<void> _markUnmarkedAbsent() async {
+  Future<void> _markUnmarkedTruancy() async {
     final unmarkedCount = _count(AttendanceStatus.unmarked);
     if (unmarkedCount == 0) {
       _toast('没有未点名人员');
@@ -648,7 +648,7 @@ class _RollCallPageState extends State<RollCallPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('将未点名人员标记为缺勤？'),
+        title: const Text('将未点名人员标记为旷课？'),
         content: Text('共 $unmarkedCount 人，已有考勤状态的人员不会改变。'),
         actions: [
           TextButton(
@@ -668,12 +668,12 @@ class _RollCallPageState extends State<RollCallPage>
     setState(() {
       for (final person in _people) {
         if (person.status == AttendanceStatus.unmarked) {
-          person.status = AttendanceStatus.absent;
+          person.status = AttendanceStatus.truancy;
         }
       }
     });
     await _save();
-    _toast('已将 $unmarkedCount 人标记为缺勤');
+    _toast('已将 $unmarkedCount 人标记为旷课');
   }
 
   Future<void> _showImportDialog() async {
@@ -997,7 +997,6 @@ class _RollCallPageState extends State<RollCallPage>
 
     final unmarked = <String>[];
     final present = <String>[];
-    final absent = <String>[];
     final leave = <String>[];
     final personalLeave = <String>[];
     final sickLeave = <String>[];
@@ -1008,8 +1007,6 @@ class _RollCallPageState extends State<RollCallPage>
       switch (person.status) {
         case AttendanceStatus.present:
           present.add(person.name);
-        case AttendanceStatus.absent:
-          absent.add(person.name);
         case AttendanceStatus.leave:
           leave.add(person.name);
         case AttendanceStatus.personalLeave:
@@ -1060,7 +1057,6 @@ class _RollCallPageState extends State<RollCallPage>
             '$timestamp 考勤情况：',
             ..._currentCourseSummary(now),
             '正常出勤：${present.join('、')}',
-            '缺勤：${absent.join('、')}',
             '公假：${leave.join('、')}',
             '事假：${personalLeave.join('、')}',
             '病假：${sickLeave.join('、')}',
@@ -1374,8 +1370,8 @@ class _RollCallPageState extends State<RollCallPage>
                     _showImportDialog();
                   case 'export':
                     _exportRoster();
-                  case 'mark_unmarked_absent':
-                    _markUnmarkedAbsent();
+                  case 'mark_unmarked_truancy':
+                    _markUnmarkedTruancy();
                   case 'sync_schedule':
                     _syncWakeUpSchedule();
                   case 'copy_format':
@@ -1398,11 +1394,11 @@ class _RollCallPageState extends State<RollCallPage>
                   ),
                 ),
                 PopupMenuItem(
-                  value: 'mark_unmarked_absent',
+                  value: 'mark_unmarked_truancy',
                   enabled: _count(AttendanceStatus.unmarked) > 0,
                   child: const ListTile(
                     leading: Icon(Icons.assignment_late_outlined),
-                    title: Text('未点名全部标记为缺勤'),
+                    title: Text('未点名全部标记为旷课'),
                   ),
                 ),
                 PopupMenuItem(
@@ -1511,10 +1507,10 @@ class _RollCallPageState extends State<RollCallPage>
         Icons.check_circle_rounded,
       ),
       (
-        '缺勤',
-        _countAbsentTypes(),
-        AttendanceStatus.absent.adaptiveColor(context),
-        Icons.cancel_rounded,
+        '异常',
+        _countAttendanceIssues(),
+        AttendanceStatus.truancy.adaptiveColor(context),
+        Icons.warning_amber_rounded,
       ),
       (
         '请假',
@@ -1619,7 +1615,7 @@ class _RollCallPageState extends State<RollCallPage>
       (RosterFilter.all, '全部'),
       (RosterFilter.unmarked, '未点名'),
       (RosterFilter.present, '正常'),
-      (RosterFilter.absent, '缺勤'),
+      (RosterFilter.issue, '异常'),
       (RosterFilter.leave, '请假'),
     ];
     return SingleChildScrollView(
@@ -1821,13 +1817,13 @@ class _RollCallPageState extends State<RollCallPage>
               const Spacer(),
               for (final status in [
                 AttendanceStatus.present,
-                AttendanceStatus.absent,
+                AttendanceStatus.truancy,
               ])
                 Padding(
                   padding: const EdgeInsets.only(left: 5),
-                  child: status == AttendanceStatus.absent
-                      ? AbsenceStatusButton(
-                          status: AttendanceStatus.absent,
+                  child: status == AttendanceStatus.truancy
+                      ? AttendanceExceptionStatusButton(
+                          status: AttendanceStatus.truancy,
                           active: false,
                           showLabel: false,
                           compact: true,
