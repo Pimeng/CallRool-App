@@ -9,12 +9,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> _pumpApp(WidgetTester tester, {Size? size}) async {
+Future<void> _pumpApp(
+  WidgetTester tester, {
+  Size? size,
+  Map<String, Object> initialValues = const {},
+}) async {
   if (size != null) {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
   }
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues(initialValues);
   await tester.pumpWidget(const RollCallApp());
   await tester.pumpAndSettle();
 }
@@ -212,6 +216,30 @@ void main() {
     expect(editor.controller!.text, '{{课程}}');
   });
 
+  testWidgets('复制格式变量插入到实际拖拽落点', (tester) async {
+    await _pumpApp(tester);
+    await tester.longPress(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+
+    final editorFinder = find.byKey(const ValueKey('copy-format-editor'));
+    final editor = tester.widget<TextField>(editorFinder);
+    editor.controller!.value = const TextEditingValue(
+      text: '尾部',
+      selection: TextSelection.collapsed(offset: 2),
+    );
+    await tester.pump();
+
+    final variable = find.widgetWithText(ActionChip, '课程');
+    final dropPoint = tester.getTopLeft(editorFinder) + const Offset(18, 42);
+    await tester.dragFrom(
+      tester.getCenter(variable),
+      dropPoint - tester.getCenter(variable),
+    );
+    await tester.pumpAndSettle();
+
+    expect(editor.controller!.text, '{{课程}}尾部');
+  });
+
   testWidgets('自定义格式在复制时替换课程和考勤变量', (tester) async {
     String? copiedText;
     final messenger = tester.binding.defaultBinaryMessenger;
@@ -303,7 +331,7 @@ void main() {
     expect(copiedText, contains('当前课程：当前测试课程｜测试教师｜测试教室｜00:00-23:59'));
   });
 
-  testWidgets('课程表同步要求手动输入 shareCode', (tester) async {
+  testWidgets('课程表同步支持粘贴 WakeUp 完整分享口令', (tester) async {
     await _pumpApp(tester);
 
     await tester.tap(find.byTooltip('名单操作'));
@@ -314,11 +342,53 @@ void main() {
     expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
     expect(find.text('authToken'), findsOneWidget);
     expect(find.text('shareCode'), findsOneWidget);
-    expect(find.text('每次同步手动填写，不会保存'), findsOneWidget);
+    expect(find.text('可直接粘贴 WakeUp 分享口令，不会保存'), findsOneWidget);
+
+    final shareCodeField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'shareCode',
+    );
+    const message =
+        '这是来自「WakeUp课程表」的课表分享，分享口令为「ffffbf0619574371bd27364855407d8f」';
+    await tester.enterText(shareCodeField, message);
+    await tester.pump();
+
+    final field = tester.widget<TextField>(shareCodeField);
+    expect(field.obscureText, isFalse);
+    expect(field.controller!.text, 'ffffbf0619574371bd27364855407d8f');
   });
 
-  testWidgets('替换名单需要二次确认且追加是主操作', (tester) async {
+  testWidgets('首次导入以替换为主操作且不二次确认', (tester) async {
     await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('名单操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入名单'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '新同学');
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FilledButton, '替换现有'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '追加'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '替换现有'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认替换现有名单？'), findsNothing);
+    expect(find.text('新同学'), findsOneWidget);
+    expect(find.text('刘一'), findsNothing);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('roll_call_has_imported_v1'), isTrue);
+  });
+
+  testWidgets('已有自定义名单时追加仍为主操作且替换需要确认', (tester) async {
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'roll_call_people_v1': jsonEncode([
+          {'id': 1, 'name': '已有同学', 'status': 'unmarked'},
+        ]),
+      },
+    );
 
     await tester.tap(find.byTooltip('名单操作'));
     await tester.pumpAndSettle();
@@ -331,13 +401,8 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, '替换现有'), findsOneWidget);
     await tester.tap(find.widgetWithText(OutlinedButton, '替换现有'));
     await tester.pumpAndSettle();
-    expect(find.text('确认替换现有名单？'), findsOneWidget);
 
-    await tester.tap(find.text('返回修改'));
-    await tester.pumpAndSettle();
-    expect(find.text('导入名单'), findsOneWidget);
-    final importField = tester.widget<TextField>(find.byType(TextField).last);
-    expect(importField.controller!.text, '新同学');
+    expect(find.text('确认替换现有名单？'), findsOneWidget);
   });
 
   testWidgets('删除确认展示当前选中的完整名单', (tester) async {
