@@ -164,6 +164,70 @@ void main() {
     expect(find.text('继续复制'), findsOneWidget);
   });
 
+  testWidgets('长按复制按钮打开自定义格式编辑器', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.longPress(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('自定义复制格式'), findsOneWidget);
+    for (final variable in ['课程', '老师', '应出勤人数', '实际出勤人数', '请假', '教室']) {
+      expect(find.widgetWithText(ActionChip, variable), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey('copy-format-editor')), findsOneWidget);
+    expect(find.byKey(const ValueKey('copy-format-preview')), findsOneWidget);
+  });
+
+  testWidgets('复制格式变量可以拖入编辑框', (tester) async {
+    await _pumpApp(tester);
+    await tester.longPress(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+
+    final editorFinder = find.byKey(const ValueKey('copy-format-editor'));
+    final editor = tester.widget<TextField>(editorFinder);
+    editor.controller!.clear();
+    await tester.pump();
+
+    final variable = find.widgetWithText(ActionChip, '课程');
+    await tester.dragFrom(
+      tester.getCenter(variable),
+      tester.getCenter(editorFinder) - tester.getCenter(variable),
+    );
+    await tester.pumpAndSettle();
+
+    expect(editor.controller!.text, '{{课程}}');
+  });
+
+  testWidgets('自定义格式在复制时替换课程和考勤变量', (tester) async {
+    String? copiedText;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText =
+            (call.arguments as Map<Object?, Object?>)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    SharedPreferences.setMockInitialValues({
+      'wakeup_schedule_data_v1': _scheduleForToday(),
+      'attendance_copy_template_v1':
+          '{{课程}}|{{老师}}|{{应出勤人数}}|{{实际出勤人数}}|{{请假}}|{{教室}}',
+    });
+    await tester.pumpWidget(const RollCallApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('继续复制'));
+    await tester.pumpAndSettle();
+
+    expect(copiedText, startsWith('当前测试课程|测试教师|10|0|无|测试教室'));
+    expect(copiedText, contains('未点名（10人）'));
+  });
+
   testWidgets('复制考勤时写入当前课程', (tester) async {
     String? copiedText;
     final messenger = tester.binding.defaultBinaryMessenger;
@@ -288,6 +352,33 @@ void main() {
       find.descendant(of: personRow, matching: find.byType(Material)).first,
     );
     expect(rowMaterial.color, AttendanceStatus.absent.softColor);
+  });
+
+  testWidgets('缺勤展开选单支持迟到早退和旷课', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('选择缺勤类型').first);
+    await tester.pumpAndSettle();
+    final menu = find.byKey(const ValueKey('absence-status-menu'));
+    for (final status in ['迟到', '早退', '旷课']) {
+      expect(
+        find.descendant(of: menu, matching: find.text(status)),
+        findsOneWidget,
+      );
+    }
+
+    await tester.tap(find.descendant(of: menu, matching: find.text('迟到')));
+    await tester.pumpAndSettle();
+    expect(find.text('迟到'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilterChip, '缺勤'));
+    await tester.pumpAndSettle();
+    expect(find.text('刘一'), findsOneWidget);
+
+    final saved = await SharedPreferences.getInstance().then(
+      (prefs) => prefs.getString('roll_call_people_v1'),
+    );
+    expect(saved, contains('"name":"刘一","status":"late"'));
   });
 
   testWidgets('320 宽度顶部栏不溢出', (tester) async {

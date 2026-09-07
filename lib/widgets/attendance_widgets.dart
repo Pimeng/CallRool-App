@@ -243,6 +243,9 @@ class AbsenceStatusButton extends StatelessWidget {
 
   static const _options = [
     AttendanceStatus.absent,
+    AttendanceStatus.truancy,
+    AttendanceStatus.late,
+    AttendanceStatus.earlyLeave,
     AttendanceStatus.leave,
     AttendanceStatus.personalLeave,
     AttendanceStatus.sickLeave,
@@ -289,7 +292,7 @@ class AbsenceStatusButton extends StatelessWidget {
     final buttonRect = buttonTopLeftInOverlay & buttonBox.size;
 
     const menuWidth = 168.0;
-    const menuHeight = 4 * 48.0 + 8.0;
+    final menuHeight = _options.length * 48.0 + 8.0;
     const gap = 6.0;
     const screenPadding = 8.0;
     final screenSize = overlayBox.size;
@@ -318,7 +321,7 @@ class AbsenceStatusButton extends StatelessWidget {
       context: buttonContext,
       useRootNavigator: false,
       barrierDismissible: true,
-      barrierLabel: '关闭缺勤类型选择',
+      barrierLabel: '关闭考勤状态选择',
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (context, animation, secondaryAnimation) {

@@ -9,11 +9,13 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/attendance.dart';
+import 'models/attendance_copy_template.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
 import 'services/wakeup_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/attendance_widgets.dart';
+import 'widgets/copy_format_dialog.dart';
 import 'widgets/wakeup_schedule_dialog.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
@@ -138,6 +140,7 @@ class _RollCallPageState extends State<RollCallPage>
   static const _wakeUpAuthTokenKey = 'wakeup_auth_token_v1';
   static const _wakeUpScheduleDataKey = 'wakeup_schedule_data_v1';
   static const _wakeUpScheduleSyncedAtKey = 'wakeup_schedule_synced_at_v1';
+  static const _attendanceCopyTemplateKey = 'attendance_copy_template_v1';
   static const _defaultNames = [
     '刘一',
     '陈二',
@@ -173,6 +176,7 @@ class _RollCallPageState extends State<RollCallPage>
   DateTime? _lastModifiedAt;
   WakeUpSchedule? _wakeUpSchedule;
   DateTime? _wakeUpScheduleSyncedAt;
+  String? _attendanceCopyTemplate;
 
   @override
   void initState() {
@@ -315,6 +319,7 @@ class _RollCallPageState extends State<RollCallPage>
       prefs.getString(_lastModifiedStorageKey) ?? '',
     );
     final cachedSchedule = prefs.getString(_wakeUpScheduleDataKey);
+    _attendanceCopyTemplate = prefs.getString(_attendanceCopyTemplateKey);
     if (cachedSchedule != null && cachedSchedule.isNotEmpty) {
       try {
         _wakeUpSchedule = WakeUpSchedule.parse(cachedSchedule);
@@ -382,9 +387,8 @@ class _RollCallPageState extends State<RollCallPage>
     return counts[status] ?? 0;
   }
 
-  int _countAbsentTypes() => _people
-      .where((person) => person.status == AttendanceStatus.absent)
-      .length;
+  int _countAbsentTypes() =>
+      _people.where((person) => isAttendanceIssueStatus(person.status)).length;
 
   int _countLeaveTypes() =>
       _people.where((person) => isLeaveStatus(person.status)).length;
@@ -413,7 +417,7 @@ class _RollCallPageState extends State<RollCallPage>
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
         RosterFilter.present => person.status == AttendanceStatus.present,
-        RosterFilter.absent => person.status == AttendanceStatus.absent,
+        RosterFilter.absent => isAttendanceIssueStatus(person.status),
         RosterFilter.leave => isLeaveStatus(person.status),
       };
       if (searched && filtered) {
@@ -919,6 +923,65 @@ class _RollCallPageState extends State<RollCallPage>
     ];
   }
 
+  Map<String, String> _copyTemplateValues(DateTime now) {
+    final schedule = _wakeUpSchedule;
+    final courses = schedule?.currentCoursesAt(now) ?? const <CurrentCourse>[];
+    final leave = _people
+        .where((person) => isLeaveStatus(person.status))
+        .map((person) => '${person.name}（${person.status.label}）')
+        .join('、');
+
+    String courseValue(String Function(CurrentCourse course) select) {
+      if (schedule == null || courses.isEmpty) return '';
+      final values = courses
+          .map(select)
+          .where((value) => value.trim().isNotEmpty)
+          .toSet();
+      return values.join('、');
+    }
+
+    return {
+      '课程': courseValue((course) => course.name),
+      '老师': courseValue((course) => course.teacher),
+      '应出勤人数': _people.length.toString(),
+      '实际出勤人数': _people
+          .where((person) => isActuallyPresentStatus(person.status))
+          .length
+          .toString(),
+      '请假': leave.isEmpty ? '无' : leave,
+      '教室': courseValue((course) => course.room),
+    };
+  }
+
+  Future<void> _showCopyFormatDialog() async {
+    final result = await showDialog<CopyFormatDialogResult>(
+      context: context,
+      builder: (context) => CopyFormatDialog(
+        initialTemplate:
+            _attendanceCopyTemplate ?? AttendanceCopyTemplate.suggested,
+        previewValues: _copyTemplateValues(DateTime.now()),
+        usesCustomTemplate: _attendanceCopyTemplate != null,
+      ),
+    );
+    if (result == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (result.reset) {
+      await prefs.remove(_attendanceCopyTemplateKey);
+      if (!mounted) return;
+      setState(() => _attendanceCopyTemplate = null);
+      _toast('已恢复默认复制格式');
+      return;
+    }
+
+    final template = result.template;
+    if (template == null || template.trim().isEmpty) return;
+    await prefs.setString(_attendanceCopyTemplateKey, template);
+    if (!mounted) return;
+    setState(() => _attendanceCopyTemplate = template);
+    _toast('自定义复制格式已保存');
+  }
+
   Future<void> _copyAttendanceSummary() async {
     if (_people.isEmpty) return;
 
@@ -928,6 +991,9 @@ class _RollCallPageState extends State<RollCallPage>
     final leave = <String>[];
     final personalLeave = <String>[];
     final sickLeave = <String>[];
+    final earlyLeave = <String>[];
+    final truancy = <String>[];
+    final late = <String>[];
     for (final person in _people) {
       switch (person.status) {
         case AttendanceStatus.present:
@@ -940,6 +1006,12 @@ class _RollCallPageState extends State<RollCallPage>
           personalLeave.add(person.name);
         case AttendanceStatus.sickLeave:
           sickLeave.add(person.name);
+        case AttendanceStatus.earlyLeave:
+          earlyLeave.add(person.name);
+        case AttendanceStatus.truancy:
+          truancy.add(person.name);
+        case AttendanceStatus.late:
+          late.add(person.name);
         case AttendanceStatus.unmarked:
           unmarked.add(person.name);
       }
@@ -972,16 +1044,30 @@ class _RollCallPageState extends State<RollCallPage>
         '${now.year.toString().padLeft(4, '0')}-'
         '${twoDigits(now.month)}-${twoDigits(now.day)} '
         '${twoDigits(now.hour)}:${twoDigits(now.minute)}:${twoDigits(now.second)}';
-    final content = [
-      '$timestamp 考勤情况：',
-      ..._currentCourseSummary(now),
-      '正常出勤：${present.join('、')}',
-      '缺勤：${absent.join('、')}',
-      '公假：${leave.join('、')}',
-      '事假：${personalLeave.join('、')}',
-      '病假：${sickLeave.join('、')}',
-      if (unmarked.isNotEmpty) '未点名（${unmarked.length}人）：${unmarked.join('、')}',
-    ].join('\n');
+    final customTemplate = _attendanceCopyTemplate;
+    final content = customTemplate == null
+        ? [
+            '$timestamp 考勤情况：',
+            ..._currentCourseSummary(now),
+            '正常出勤：${present.join('、')}',
+            '缺勤：${absent.join('、')}',
+            '公假：${leave.join('、')}',
+            '事假：${personalLeave.join('、')}',
+            '病假：${sickLeave.join('、')}',
+            '早退：${earlyLeave.join('、')}',
+            '旷课：${truancy.join('、')}',
+            '迟到：${late.join('、')}',
+            if (unmarked.isNotEmpty)
+              '未点名（${unmarked.length}人）：${unmarked.join('、')}',
+          ].join('\n')
+        : [
+            AttendanceCopyTemplate.render(
+              customTemplate,
+              _copyTemplateValues(now),
+            ),
+            if (unmarked.isNotEmpty)
+              '未点名（${unmarked.length}人）：${unmarked.join('、')}',
+          ].join('\n');
 
     await Clipboard.setData(ClipboardData(text: content));
     _toast('考勤情况已复制到剪贴板');
@@ -1257,10 +1343,17 @@ class _RollCallPageState extends State<RollCallPage>
               icon: const Icon(Icons.restart_alt_rounded),
             ),
           if (!_topSearchMode)
-            IconButton(
-              tooltip: '复制考勤情况',
-              onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
-              icon: const Icon(Icons.content_copy_rounded),
+            Tooltip(
+              message: '复制考勤情况',
+              triggerMode: TooltipTriggerMode.manual,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: _showCopyFormatDialog,
+                child: IconButton(
+                  onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
+                  icon: const Icon(Icons.content_copy_rounded),
+                ),
+              ),
             ),
           if (!_topSearchMode)
             PopupMenuButton<String>(
@@ -1275,6 +1368,8 @@ class _RollCallPageState extends State<RollCallPage>
                     _markUnmarkedAbsent();
                   case 'sync_schedule':
                     _syncWakeUpSchedule();
+                  case 'copy_format':
+                    _showCopyFormatDialog();
                 }
               },
               itemBuilder: (context) => [
@@ -1308,6 +1403,14 @@ class _RollCallPageState extends State<RollCallPage>
                     subtitle: _wakeUpSchedule == null
                         ? const Text('尚未配置')
                         : Text(_wakeUpSchedule!.name),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'copy_format',
+                  child: ListTile(
+                    leading: Icon(Icons.text_fields_rounded),
+                    title: Text('自定义复制格式'),
+                    subtitle: Text('也可以长按复制按钮打开'),
                   ),
                 ),
               ],
