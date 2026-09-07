@@ -171,7 +171,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('自定义复制格式'), findsOneWidget);
-    for (final variable in ['课程', '老师', '应出勤人数', '实际出勤人数', '请假', '教室']) {
+    for (final variable in [
+      '课程',
+      '老师',
+      '应出勤人数',
+      '实际出勤人数',
+      '请假名单',
+      '请假人数',
+      '旷课名单',
+      '旷课人数',
+      '迟到名单',
+      '迟到人数',
+      '早退名单',
+      '早退人数',
+      '教室',
+    ]) {
       expect(find.widgetWithText(ActionChip, variable), findsOneWidget);
     }
     expect(find.byKey(const ValueKey('copy-format-editor')), findsOneWidget);
@@ -213,8 +227,8 @@ void main() {
     );
     SharedPreferences.setMockInitialValues({
       'wakeup_schedule_data_v1': _scheduleForToday(),
-      'attendance_copy_template_v1':
-          '{{课程}}|{{老师}}|{{应出勤人数}}|{{实际出勤人数}}|{{请假}}|{{教室}}',
+      'attendance_copy_template_v2':
+          '{{课程}}|{{老师}}|{{应出勤人数}}|{{实际出勤人数}}|{{请假名单}}|{{教室}}',
     });
     await tester.pumpWidget(const RollCallApp());
     await tester.pumpAndSettle();
@@ -226,6 +240,40 @@ void main() {
 
     expect(copiedText, startsWith('当前测试课程|测试教师|10|0|无|测试教室'));
     expect(copiedText, contains('未点名（10人）'));
+  });
+
+  testWidgets('名单与人数变量分别输出状态人员和数量', (tester) async {
+    String? copiedText;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText =
+            (call.arguments as Map<Object?, Object?>)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    SharedPreferences.setMockInitialValues({
+      'roll_call_people_v1': jsonEncode([
+        {'id': 1, 'name': '刘一', 'status': 'leave'},
+        {'id': 2, 'name': '陈二', 'status': 'personalLeave'},
+        {'id': 3, 'name': '张三', 'status': 'truancy'},
+        {'id': 4, 'name': '李四', 'status': 'late'},
+        {'id': 5, 'name': '王五', 'status': 'earlyLeave'},
+      ]),
+      'attendance_copy_template_v2':
+          '{{请假名单}}|{{请假人数}}|{{旷课名单}}|{{旷课人数}}|'
+          '{{迟到名单}}|{{迟到人数}}|{{早退名单}}|{{早退人数}}',
+    });
+    await tester.pumpWidget(const RollCallApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('复制考勤情况'));
+    await tester.pumpAndSettle();
+
+    expect(copiedText, '刘一、陈二|2|张三|1|李四|1|王五|1');
   });
 
   testWidgets('复制考勤时写入当前课程', (tester) async {
