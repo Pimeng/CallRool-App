@@ -114,3 +114,21 @@ test/
 - [`file_picker`](https://pub.dev/packages/file_picker)：选择和保存 TXT 文件
 - [`lpinyin`](https://pub.dev/packages/lpinyin)：姓名拼音及首字母搜索
 - [`shared_preferences`](https://pub.dev/packages/shared_preferences)：本地保存名单和考勤状态
+
+## Android 签名
+
+正式 Release 必须使用固定密钥，缺少配置会使构建失败，不会回退到 Debug 签名。
+本地可以创建已被 Git 忽略的 `android/key.properties`（UTF-8），填写
+`storeFile`、`storePassword`、`keyAlias`、`keyPassword`。
+`storeFile` 建议使用绝对路径，Windows 路径使用正斜杠。中文别名原样填写。
+
+也可以设置环境变量 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、
+`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，它们优先于本地配置。
+
+GitHub Actions 使用四个仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、
+`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
+密钥文件仅在 Runner 临时目录恢复，发布前会验证所有 APK 的证书与配置的密钥一致，
+Release 附件 `signing-certificate.txt` 提供证书 SHA-256 指纹供核对。
+
+正式发布仅在原仓库的 master 分支执行。无 Secrets 的 PR/本地测试可使用
+`flutter build apk --debug`，不会要求正式密钥。请勿将正式密钥提交到仓库。
