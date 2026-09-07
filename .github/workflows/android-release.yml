@@ -169,9 +169,12 @@ jobs:
           expected="$(sha256sum "$RUNNER_TEMP/release-cert.der" | cut -d ' ' -f 1)"
           echo "Signing certificate SHA-256: $expected" > release-artifacts/signing-certificate.txt
           for apk in release-artifacts/*.apk; do
-            actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            "$apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-certificate.txt"
+            actual="$(sed -nE 's/^Signer .*certificate SHA-256 digest: ([[:xdigit:]]+).*$/\1/p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]' | sort -u)"
             if [[ "$actual" != "$expected" ]]; then
               echo "::error::Signing certificate mismatch: $apk"
+              echo "Expected certificate SHA-256: $expected"
+              cat "$RUNNER_TEMP/apk-certificate.txt"
               exit 1
             fi
             echo "$(basename "$apk"): verified" >> release-artifacts/signing-certificate.txt
