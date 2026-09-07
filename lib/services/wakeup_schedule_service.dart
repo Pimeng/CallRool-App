@@ -51,6 +51,17 @@ class WakeUpScheduleService {
   }
 }
 
+String extractWakeUpShareCode(String input) {
+  final trimmed = input.trim();
+  final labeledCode = RegExp(
+    r'分享口令(?:为|是)?\s*[：:]?\s*[「『“\"]?\s*([A-Za-z0-9_-]+)',
+  ).firstMatch(trimmed)?.group(1);
+  if (labeledCode != null && labeledCode.isNotEmpty) return labeledCode;
+
+  final embeddedCode = RegExp(r'[A-Fa-f0-9]{32}').firstMatch(trimmed)?.group(0);
+  return embeddedCode ?? trimmed;
+}
+
 String decodeWakeUpShareResponse(String body) {
   final decoded = jsonDecode(body);
   if (decoded is! Map<String, dynamic>) {

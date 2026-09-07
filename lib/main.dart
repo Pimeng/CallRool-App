@@ -136,6 +136,7 @@ void main() {
 class _RollCallPageState extends State<RollCallPage>
     with WidgetsBindingObserver {
   static const _storageKey = 'roll_call_people_v1';
+  static const _hasImportedRosterKey = 'roll_call_has_imported_v1';
   static const _lastModifiedStorageKey = 'roll_call_last_modified_v1';
   static const _wakeUpAuthTokenKey = 'wakeup_auth_token_v1';
   static const _wakeUpScheduleDataKey = 'wakeup_schedule_data_v1';
@@ -166,6 +167,7 @@ class _RollCallPageState extends State<RollCallPage>
   RosterFilter _visiblePeopleCacheFilter = RosterFilter.all;
   Map<AttendanceStatus, int>? _statusCountsCache;
   bool _loading = true;
+  bool _hasImportedRoster = false;
   bool _selectionMode = false;
   bool _overviewCollapsed = false;
   bool _topSearchMode = false;
@@ -354,8 +356,18 @@ class _RollCallPageState extends State<RollCallPage>
         }
       } catch (_) {}
     }
+    _hasImportedRoster =
+        prefs.getBool(_hasImportedRosterKey) ?? !_isUsingDefaultRoster;
+    await prefs.setBool(_hasImportedRosterKey, _hasImportedRoster);
     if (mounted) setState(() => _loading = false);
   }
+
+  bool get _isUsingDefaultRoster =>
+      _people.length == _defaultNames.length &&
+      List.generate(
+        _people.length,
+        (index) => _people[index].name == _defaultNames[index],
+      ).every((matches) => matches);
 
   Future<void> _save() async {
     _lastModifiedAt = DateTime.now();
@@ -680,6 +692,7 @@ class _RollCallPageState extends State<RollCallPage>
     final controller = TextEditingController();
     var names = <String>[];
     String? action;
+    final isFirstImport = !_hasImportedRoster;
     while (true) {
       if (!mounted) {
         controller.dispose();
@@ -749,18 +762,33 @@ class _RollCallPageState extends State<RollCallPage>
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('取消'),
               ),
-              OutlinedButton(
-                onPressed: names.isEmpty
-                    ? null
-                    : () => Navigator.pop(dialogContext, 'replace'),
-                child: const Text('替换现有'),
-              ),
-              FilledButton(
-                onPressed: names.isEmpty
-                    ? null
-                    : () => Navigator.pop(dialogContext, 'append'),
-                child: const Text('追加'),
-              ),
+              if (isFirstImport) ...[
+                OutlinedButton(
+                  onPressed: names.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, 'append'),
+                  child: const Text('追加'),
+                ),
+                FilledButton(
+                  onPressed: names.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, 'replace'),
+                  child: const Text('替换现有'),
+                ),
+              ] else ...[
+                OutlinedButton(
+                  onPressed: names.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, 'replace'),
+                  child: const Text('替换现有'),
+                ),
+                FilledButton(
+                  onPressed: names.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, 'append'),
+                  child: const Text('追加'),
+                ),
+              ],
             ],
           ),
         ),
@@ -769,7 +797,7 @@ class _RollCallPageState extends State<RollCallPage>
         controller.dispose();
         return;
       }
-      if (action != 'replace') break;
+      if (action != 'replace' || isFirstImport) break;
 
       if (!mounted) {
         controller.dispose();
@@ -817,7 +845,10 @@ class _RollCallPageState extends State<RollCallPage>
         }
       }
     });
+    _hasImportedRoster = true;
     await _save();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hasImportedRosterKey, true);
     _toast('名单已导入，共 ${_people.length} 人');
   }
 

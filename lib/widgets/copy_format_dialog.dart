@@ -29,6 +29,7 @@ class CopyFormatDialog extends StatefulWidget {
 class _CopyFormatDialogState extends State<CopyFormatDialog> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  final _editorKey = GlobalKey();
 
   @override
   void initState() {
@@ -49,8 +50,8 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
 
   void _handleChanged() => setState(() {});
 
-  void _insertVariable(String token) {
-    final selection = _controller.selection;
+  void _insertVariable(String token, {TextSelection? targetSelection}) {
+    final selection = targetSelection ?? _controller.selection;
     final text = _controller.text;
     final start = selection.isValid ? selection.start : text.length;
     final end = selection.isValid ? selection.end : text.length;
@@ -59,6 +60,36 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
       selection: TextSelection.collapsed(offset: start + token.length),
     );
     _focusNode.requestFocus();
+  }
+
+  void _insertVariableAtDrop(DragTargetDetails<String> details) {
+    final editableText = _findEditableTextState();
+    final position = editableText?.renderEditable.getPositionForPoint(
+      details.offset,
+    );
+    _insertVariable(
+      details.data,
+      targetSelection: position == null
+          ? null
+          : TextSelection.collapsed(offset: position.offset),
+    );
+  }
+
+  EditableTextState? _findEditableTextState() {
+    final editorContext = _editorKey.currentContext;
+    if (editorContext == null) return null;
+    EditableTextState? result;
+    void visit(Element element) {
+      if (result != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        result = element.state as EditableTextState;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    editorContext.visitChildElements(visit);
+    return result;
   }
 
   @override
@@ -77,7 +108,7 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '点击变量，或将变量拖到编辑框后插入光标位置。',
+                '点击变量可插入光标位置，也可拖到编辑框中的指定位置。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 10),
@@ -88,6 +119,7 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
                   for (final variable in AttendanceCopyTemplate.variables)
                     Draggable<String>(
                       data: variable.token,
+                      dragAnchorStrategy: pointerDragAnchorStrategy,
                       feedback: Material(
                         color: Colors.transparent,
                         child: Chip(label: Text(variable.name)),
@@ -111,9 +143,10 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
               ),
               const SizedBox(height: 14),
               DragTarget<String>(
-                onAcceptWithDetails: (details) => _insertVariable(details.data),
+                onAcceptWithDetails: _insertVariableAtDrop,
                 builder: (context, candidateData, rejectedData) =>
                     AnimatedContainer(
+                      key: _editorKey,
                       duration: const Duration(milliseconds: 160),
                       padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(

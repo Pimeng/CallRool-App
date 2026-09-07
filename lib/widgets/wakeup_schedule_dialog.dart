@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/wakeup_schedule_service.dart';
+
 class WakeUpScheduleCredentials {
   const WakeUpScheduleCredentials({
     required this.authToken,
@@ -102,14 +104,15 @@ class _WakeUpScheduleDialogState extends State<WakeUpScheduleDialog> {
             TextField(
               controller: _shareCodeController,
               autofocus: widget.initialAuthToken.isNotEmpty,
-              enableSuggestions: false,
               autocorrect: false,
+              obscureText: false,
+              keyboardType: TextInputType.text,
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'shareCode',
-                helperText: '每次同步手动填写，不会保存',
+                helperText: '可直接粘贴 WakeUp 分享口令，不会保存',
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: _handleShareCodeChanged,
               onSubmitted: (_) => _submit(),
             ),
           ],
@@ -129,13 +132,24 @@ class _WakeUpScheduleDialogState extends State<WakeUpScheduleDialog> {
     );
   }
 
+  void _handleShareCodeChanged(String value) {
+    final shareCode = extractWakeUpShareCode(value);
+    if (shareCode != value.trim()) {
+      _shareCodeController.value = TextEditingValue(
+        text: shareCode,
+        selection: TextSelection.collapsed(offset: shareCode.length),
+      );
+    }
+    setState(() {});
+  }
+
   void _submit() {
     if (!_canSubmit) return;
     Navigator.pop(
       context,
       WakeUpScheduleCredentials(
         authToken: _authTokenController.text.trim(),
-        shareCode: _shareCodeController.text.trim(),
+        shareCode: extractWakeUpShareCode(_shareCodeController.text),
       ),
     );
   }

@@ -11,6 +11,23 @@ const _shareData = '''
 ''';
 
 void main() {
+  test('从 WakeUp 完整分享口令中提取 shareCode', () {
+    const message =
+        '这是来自「WakeUp课程表」的课表分享，30分钟内有效哦，如果失效请朋友再分享一遍叭。'
+        '为了保护隐私我们选择不监听你的剪贴板，请复制这条消息后，打开App的主界面，'
+        '右上角第二个按钮 -> 从分享口令导入，按操作提示即可完成导入~'
+        '分享口令为「ffffbf0619574371bd27364855407d8f」';
+
+    expect(extractWakeUpShareCode(message), 'ffffbf0619574371bd27364855407d8f');
+  });
+
+  test('直接填写 shareCode 时保持原值并去除首尾空白', () {
+    expect(
+      extractWakeUpShareCode('  ffffbf0619574371bd27364855407d8f  '),
+      'ffffbf0619574371bd27364855407d8f',
+    );
+  });
+
   test('解析 WakeUp 分享数据并匹配当前课程', () {
     final schedule = WakeUpSchedule.parse(_shareData);
 
