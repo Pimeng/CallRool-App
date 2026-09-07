@@ -698,7 +698,7 @@ class _RollCallPageState extends State<RollCallPage>
         controller.dispose();
         return;
       }
-      action = await showDialog<String>(
+      final importRoute = DialogRoute<String>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
@@ -734,11 +734,12 @@ class _RollCallPageState extends State<RollCallPage>
                             type: FileType.custom,
                             allowedExtensions: const ['txt'],
                           );
-                          if (picked == null) return;
+                          if (picked == null || !dialogContext.mounted) return;
                           final text = utf8.decode(
                             await picked.readAsBytes(),
                             allowMalformed: true,
                           );
+                          if (!dialogContext.mounted) return;
                           controller.text = text;
                           setDialogState(() => names = _parseNames(text));
                         },
@@ -793,6 +794,9 @@ class _RollCallPageState extends State<RollCallPage>
           ),
         ),
       );
+      action = await Navigator.of(context, rootNavigator: true).push(importRoute);
+      // The dialog still uses the controller during its reverse transition.
+      await importRoute.completed;
       if (action == null || names.isEmpty) {
         controller.dispose();
         return;
