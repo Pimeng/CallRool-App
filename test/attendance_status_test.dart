@@ -13,7 +13,7 @@ void main() {
       AttendanceStatus.truancy,
     ]) {
       expect(isAttendanceIssueStatus(status), isTrue);
-      expect(isAbsenceStatus(status), isTrue);
+      expect(isAttendanceExceptionStatus(status), isTrue);
     }
   });
 }

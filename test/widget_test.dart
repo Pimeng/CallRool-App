@@ -123,17 +123,17 @@ void main() {
     expect(await saved, contains('郑十'));
   });
 
-  testWidgets('缺勤与请假使用独立筛选', (tester) async {
+  testWidgets('异常与请假使用独立筛选', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('选择缺勤类型').first);
+    await tester.tap(find.byTooltip('选择异常考勤状态').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('公假'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilterChip, '缺勤'));
+    await tester.tap(find.widgetWithText(FilterChip, '异常'));
     await tester.pumpAndSettle();
-    expect(find.text('在“缺勤”筛选下没有匹配人员'), findsOneWidget);
+    expect(find.text('在“异常”筛选下没有匹配人员'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilterChip, '请假'));
     await tester.pumpAndSettle();
@@ -364,7 +364,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '王小明');
     await tester.tap(find.byType(DropdownButtonFormField<AttendanceStatus>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('缺勤').last);
+    await tester.tap(find.text('旷课').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '添加'));
     await tester.pumpAndSettle();
@@ -372,22 +372,22 @@ void main() {
     final saved = await SharedPreferences.getInstance().then(
       (prefs) => prefs.getString('roll_call_people_v1'),
     );
-    expect(saved, contains('"name":"王小明","status":"absent"'));
+    expect(saved, contains('"name":"王小明","status":"truancy"'));
   });
 
-  testWidgets('人员状态使用整行底色且缺勤菜单没有投影', (tester) async {
+  testWidgets('人员状态使用整行底色且异常菜单没有投影', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('选择缺勤类型').first);
+    await tester.tap(find.byTooltip('选择异常考勤状态').first);
     await tester.pumpAndSettle();
     final menu = tester.widget<Material>(
-      find.byKey(const ValueKey('absence-status-menu')),
+      find.byKey(const ValueKey('attendance-exception-status-menu')),
     );
     expect(menu.elevation, 0);
     await tester.tap(
       find.descendant(
-        of: find.byKey(const ValueKey('absence-status-menu')),
-        matching: find.text('缺勤'),
+        of: find.byKey(const ValueKey('attendance-exception-status-menu')),
+        matching: find.text('旷课'),
       ),
     );
     await tester.pumpAndSettle();
@@ -399,27 +399,28 @@ void main() {
     final rowMaterial = tester.widget<Material>(
       find.descendant(of: personRow, matching: find.byType(Material)).first,
     );
-    expect(rowMaterial.color, AttendanceStatus.absent.softColor);
+    expect(rowMaterial.color, AttendanceStatus.truancy.softColor);
   });
 
-  testWidgets('缺勤展开选单支持迟到早退和旷课', (tester) async {
+  testWidgets('异常展开选单支持迟到早退和旷课', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('选择缺勤类型').first);
+    await tester.tap(find.byTooltip('选择异常考勤状态').first);
     await tester.pumpAndSettle();
-    final menu = find.byKey(const ValueKey('absence-status-menu'));
+    final menu = find.byKey(const ValueKey('attendance-exception-status-menu'));
     for (final status in ['迟到', '早退', '旷课']) {
       expect(
         find.descendant(of: menu, matching: find.text(status)),
         findsOneWidget,
       );
     }
+    expect(find.descendant(of: menu, matching: find.text('缺勤')), findsNothing);
 
     await tester.tap(find.descendant(of: menu, matching: find.text('迟到')));
     await tester.pumpAndSettle();
     expect(find.text('迟到'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilterChip, '缺勤'));
+    await tester.tap(find.widgetWithText(FilterChip, '异常'));
     await tester.pumpAndSettle();
     expect(find.text('刘一'), findsOneWidget);
 

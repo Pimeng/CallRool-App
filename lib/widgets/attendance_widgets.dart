@@ -118,16 +118,16 @@ class PersonRow extends StatelessWidget {
               if (!selectionMode)
                 for (final status in [
                   AttendanceStatus.present,
-                  AttendanceStatus.absent,
+                  AttendanceStatus.truancy,
                 ])
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
-                    child: status == AttendanceStatus.absent
-                        ? AbsenceStatusButton(
-                            status: isAbsenceStatus(person.status)
+                    child: status == AttendanceStatus.truancy
+                        ? AttendanceExceptionStatusButton(
+                            status: isAttendanceExceptionStatus(person.status)
                                 ? person.status
-                                : AttendanceStatus.absent,
-                            active: isAbsenceStatus(person.status),
+                                : AttendanceStatus.truancy,
+                            active: isAttendanceExceptionStatus(person.status),
                             showLabel: wide,
                             onSelected: onStatus,
                           )
@@ -224,9 +224,9 @@ class QuickStatusButton extends StatelessWidget {
   }
 }
 
-/// Displays absence-related actions in a popup anchored to this button.
-class AbsenceStatusButton extends StatelessWidget {
-  const AbsenceStatusButton({
+/// Displays non-standard attendance actions in a popup anchored to this button.
+class AttendanceExceptionStatusButton extends StatelessWidget {
+  const AttendanceExceptionStatusButton({
     super.key,
     required this.status,
     required this.active,
@@ -242,7 +242,6 @@ class AbsenceStatusButton extends StatelessWidget {
   final bool compact;
 
   static const _options = [
-    AttendanceStatus.absent,
     AttendanceStatus.truancy,
     AttendanceStatus.late,
     AttendanceStatus.earlyLeave,
@@ -257,14 +256,14 @@ class AbsenceStatusButton extends StatelessWidget {
       builder: (buttonContext) {
         if (compact) {
           return IconButton.filledTonal(
-            tooltip: '选择缺勤类型',
+            tooltip: '选择异常考勤状态',
             onPressed: () => _showMenu(buttonContext),
             icon: Icon(status.icon, color: status.adaptiveColor(context)),
           );
         }
 
         return Tooltip(
-          message: '选择缺勤类型',
+          message: '选择异常考勤状态',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _showMenu(buttonContext),
@@ -329,7 +328,7 @@ class AbsenceStatusButton extends StatelessWidget {
           width: menuWidth,
           height: menuHeight,
           child: Material(
-            key: const ValueKey('absence-status-menu'),
+            key: const ValueKey('attendance-exception-status-menu'),
             elevation: 0,
             color: Theme.of(context).colorScheme.surfaceContainer,
             clipBehavior: Clip.antiAlias,
