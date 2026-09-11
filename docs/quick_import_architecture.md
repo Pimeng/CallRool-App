@@ -28,10 +28,9 @@ CI 需要配置：
 
 - `QUICK_IMPORT_PRIVATE_TOKEN`：仅具有 `Pimeng/callrool-app-inner` 读权限的 token。
 - `SYMBOL_ARCHIVE_TOKEN`：对 `Pimeng/callrool-app-inner` 具有 Release 读写权限的 token。
-- `SYMBOL_ARCHIVE_PASSWORD`：加密 Flutter 符号归档的独立强密码。
 
-Release 产物只包含 APK 和签名证书指纹。`split-debug-info` 文件会用
-AES-256-CBC/PBKDF2 加密后上传到单独的私有符号仓库，不作为公开 GitHub Release Asset 发布。
+Release 产物只包含 APK 和签名证书指纹。`split-debug-info` 文件会压缩后上传到
+`Pimeng/callrool-app-inner` 的私有 Release，不作为公开 GitHub Release Asset 发布。
 
 `temp/` 只是迁移工作区，不是任何 App 运行时或 CI 依赖。
 

@@ -111,10 +111,9 @@ jobs:
         env:
           QUICK_IMPORT_PRIVATE_TOKEN: ${{ secrets.QUICK_IMPORT_PRIVATE_TOKEN }}
           SYMBOL_ARCHIVE_TOKEN: ${{ secrets.SYMBOL_ARCHIVE_TOKEN }}
-          SYMBOL_ARCHIVE_PASSWORD: ${{ secrets.SYMBOL_ARCHIVE_PASSWORD }}
         run: |
           set -euo pipefail
-          for name in QUICK_IMPORT_PRIVATE_TOKEN SYMBOL_ARCHIVE_TOKEN SYMBOL_ARCHIVE_PASSWORD; do
+          for name in QUICK_IMPORT_PRIVATE_TOKEN SYMBOL_ARCHIVE_TOKEN; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing required official-build secret: $name"
               exit 1
@@ -211,19 +210,14 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk \
             "release-artifacts/CallRool-${{ steps.version.outputs.version }}-universal.apk"
 
-      - name: Encrypt obfuscation symbols
+      - name: Package obfuscation symbols
         if: steps.version.outputs.should_release == 'true'
         shell: bash
-        env:
-          SYMBOL_ARCHIVE_PASSWORD: ${{ secrets.SYMBOL_ARCHIVE_PASSWORD }}
         run: |
           set -euo pipefail
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/flutter-symbols.tar.gz" flutter-symbols
-          openssl enc -aes-256-cbc -salt -pbkdf2 \
-            -in "$RUNNER_TEMP/flutter-symbols.tar.gz" \
-            -out "$RUNNER_TEMP/flutter-symbols-${{ steps.version.outputs.version }}.tar.gz.enc" \
-            -pass env:SYMBOL_ARCHIVE_PASSWORD
-          rm -f "$RUNNER_TEMP/flutter-symbols.tar.gz"
+          tar -C "$RUNNER_TEMP" \
+            -czf "$RUNNER_TEMP/flutter-symbols-${{ steps.version.outputs.version }}.tar.gz" \
+            flutter-symbols
 
       - name: Retain symbols in private repository
         if: steps.version.outputs.should_release == 'true'
@@ -238,10 +232,10 @@ jobs:
             exit 1
           fi
           symbol_tag="flutter-symbols-${{ steps.version.outputs.version }}"
-          symbol_file="$RUNNER_TEMP/$symbol_tag.tar.gz.enc"
+          symbol_file="$RUNNER_TEMP/$symbol_tag.tar.gz"
           if ! gh release view "$symbol_tag" --repo "$SYMBOL_ARCHIVE_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$symbol_tag" --repo "$SYMBOL_ARCHIVE_REPOSITORY" \
-              --title "$symbol_tag" --notes "Encrypted Flutter split-debug-info archive."
+              --title "$symbol_tag" --notes "Private Flutter split-debug-info archive."
           fi
           gh release upload "$symbol_tag" "$symbol_file" \
             --repo "$SYMBOL_ARCHIVE_REPOSITORY" --clobber
