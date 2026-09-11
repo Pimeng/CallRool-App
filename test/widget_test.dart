@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
+import 'package:callrool_app/models/attendance_record.dart';
+import 'package:callrool_app/services/attendance_history_store.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -62,6 +64,36 @@ Future<void> _openRandomPicker(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ListTile, '随机点人'));
   await tester.pumpAndSettle();
 }
+
+/// 打开「工具箱 > 考勤记录」。
+Future<void> _openHistory(WidgetTester tester) async {
+  await _openTab(tester, '工具箱');
+  await tester.tap(find.widgetWithText(ListTile, '考勤记录'));
+  await tester.pumpAndSettle();
+}
+
+/// 构造一条考勤历史记录，备注默认取课程名。
+AttendanceRecord _historyRecord({
+  required String id,
+  required DateTime savedAt,
+  String? courseName,
+  String? teacher,
+  String? room,
+}) => AttendanceRecord(
+  id: id,
+  savedAt: savedAt,
+  note: courseName ?? '未关联课程',
+  courseName: courseName,
+  teacher: teacher,
+  room: room,
+  entries: const [
+    AttendanceRecordEntry(
+      personId: 1,
+      name: '刘一',
+      status: AttendanceStatus.present,
+    ),
+  ],
+);
 
 /// 等待抽签滚动动画结束。
 ///
@@ -395,16 +427,22 @@ void main() {
     expect(find.widgetWithText(AppBar, '工具箱'), findsOneWidget);
     expect(find.text('抽签'), findsOneWidget);
     expect(find.widgetWithText(ListTile, '随机点人'), findsOneWidget);
+    expect(find.text('记录'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, '考勤记录'), findsOneWidget);
 
     await _openTab(tester, '设置');
     expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
     expect(find.text('名单'), findsOneWidget);
-    expect(find.text('复制'), findsOneWidget);
-    expect(find.text('课程表'), findsOneWidget);
+    expect(find.text('编辑名单'), findsOneWidget);
     expect(find.text('导入名单'), findsOneWidget);
     expect(find.text('导出名单'), findsOneWidget);
     expect(find.text('自定义复制格式'), findsOneWidget);
     expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
+    // 设置页加了「编辑名单 / 备份与还原」后变长，底部内容需要滚动才可见。
+    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpAndSettle();
+    expect(find.text('数据'), findsOneWidget);
+    expect(find.text('备份与还原'), findsOneWidget);
     expect(find.textContaining('上次修改：'), findsOneWidget);
     expect(find.text('随机点人'), findsNothing);
     expect(find.text('复制考勤情况'), findsNothing);
@@ -414,6 +452,232 @@ void main() {
     await _openTab(tester, '考勤');
     expect(find.byType(AppBar), findsNothing);
     expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
+  });
+
+  testWidgets('保存当前考勤记录后可在工具箱考勤记录中查看', (tester) async {
+    await _pumpApp(tester);
+
+    await _tapAction(tester, '保存当前考勤记录');
+    expect(find.text('保存当前考勤记录'), findsOneWidget);
+    expect(find.textContaining('还有 10 人未点名'), findsOneWidget);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    await _openTab(tester, '工具箱');
+    expect(find.text('已保存 1 条记录'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ListTile, '考勤记录'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '考勤记录'), findsOneWidget);
+    expect(find.textContaining('应到 10 实到 0'), findsOneWidget);
+
+    // 打开详情可以看到逐状态名单。
+    await tester.tap(find.byType(ListTile).first);
+    await tester.pumpAndSettle();
+    expect(find.text('未点名（10）'), findsOneWidget);
+    expect(find.textContaining('刘一'), findsOneWidget);
+  });
+
+  testWidgets('编辑名单可设置扩展字段，搜索能命中字段值', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.tap(find.text('编辑名单'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '编辑名单'), findsOneWidget);
+    expect(find.text('未设置扩展字段'), findsWidgets);
+
+    await tester.tap(find.text('刘一'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '宿舍'), '101');
+    await tester.enterText(find.widgetWithText(TextField, '学号'), '20230001');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('宿舍 101 · 学号 20230001'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+    await tester.pumpAndSettle();
+
+    // 回到考勤页，用学号搜索应只剩下刘一。
+    await _openTab(tester, '考勤');
+    await tester.enterText(find.byType(TextField), '20230001');
+    await tester.pumpAndSettle();
+    expect(find.text('刘一'), findsOneWidget);
+    expect(find.text('陈二'), findsNothing);
+    expect(find.text('宿舍 101 · 学号 20230001'), findsOneWidget);
+  });
+
+  testWidgets('可以新增自定义扩展字段', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.tap(find.text('编辑名单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.view_column_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加字段'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, '字段名').at(2),
+      '班级',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    // 新字段应出现在人员编辑弹窗中。
+    await tester.tap(find.text('刘一'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, '班级'), findsOneWidget);
+  });
+
+  testWidgets('备份与还原页展示本机数据统计', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备份与还原'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, '备份与还原'), findsOneWidget);
+    expect(find.text('导出为文件'), findsOneWidget);
+    expect(find.text('选择备份文件'), findsOneWidget);
+    expect(find.textContaining('当前本机：10 人名单'), findsOneWidget);
+  });
+
+  testWidgets('考勤记录支持按课程与日期多条件筛选', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'attendance_history_v1': AttendanceHistoryStore.encode([
+          _historyRecord(
+            id: 'a',
+            savedAt: today,
+            courseName: '高等数学',
+            teacher: '王老师',
+            room: 'A101',
+          ),
+          _historyRecord(
+            id: 'b',
+            savedAt: today.subtract(const Duration(days: 3)),
+            courseName: '大学英语',
+            teacher: '李老师',
+            room: 'B202',
+          ),
+          _historyRecord(
+            id: 'c',
+            savedAt: today.subtract(const Duration(days: 10)),
+          ),
+        ]),
+      },
+    );
+
+    await _openHistory(tester);
+    expect(find.byType(ListTile), findsNWidgets(3));
+    // 没有筛选条件时不显示统计行。
+    expect(find.textContaining('筛选后'), findsNothing);
+
+    // 课程多选：同时选两门课，命中任意一个即可。
+    await tester.tap(find.byKey(const ValueKey('history-course-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('按课程筛选'), findsOneWidget);
+    await tester.tap(find.widgetWithText(CheckboxListTile, '高等数学'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, '大学英语'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('课程：已选 2 个课程'), findsOneWidget);
+    expect(find.text('筛选后 2 / 3 条'), findsOneWidget);
+    expect(find.byType(ListTile), findsNWidgets(2));
+
+    // 叠加日期条件（与课程按「与」组合），只剩今天那一条。
+    await tester.tap(find.byKey(const ValueKey('history-date-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('按日期筛选'), findsOneWidget);
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('日期：今天'), findsOneWidget);
+    expect(find.text('筛选后 1 / 3 条'), findsOneWidget);
+    expect(find.byType(ListTile), findsNWidgets(1));
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.text('大学英语'), findsNothing);
+
+    // 一键清除全部筛选条件。
+    await tester.tap(find.byIcon(Icons.filter_alt_off_rounded));
+    await tester.pumpAndSettle();
+    expect(find.byType(ListTile), findsNWidgets(3));
+    expect(find.textContaining('筛选后'), findsNothing);
+  });
+
+  testWidgets('考勤记录支持关键词搜索与无匹配提示', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'attendance_history_v1': AttendanceHistoryStore.encode([
+          _historyRecord(
+            id: 'a',
+            savedAt: today,
+            courseName: '高等数学',
+            teacher: '王老师',
+            room: 'A101',
+          ),
+          _historyRecord(
+            id: 'b',
+            savedAt: today.subtract(const Duration(days: 3)),
+            courseName: '大学英语',
+            teacher: '李老师',
+            room: 'B202',
+          ),
+        ]),
+      },
+    );
+
+    await _openHistory(tester);
+    await tester.enterText(find.byType(TextField), '李老师');
+    await tester.pumpAndSettle();
+    expect(find.text('筛选后 1 / 2 条'), findsOneWidget);
+    expect(find.text('大学英语'), findsOneWidget);
+    expect(find.text('高等数学'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '不存在的课程');
+    await tester.pumpAndSettle();
+    expect(find.text('没有符合筛选条件的记录'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '清除筛选'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ListTile), findsNWidgets(2));
+  });
+
+  testWidgets('考勤记录可按「未关联课程」筛选', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'attendance_history_v1': AttendanceHistoryStore.encode([
+          _historyRecord(id: 'a', savedAt: today, courseName: '高等数学'),
+          _historyRecord(id: 'c', savedAt: today),
+        ]),
+      },
+    );
+
+    await _openHistory(tester);
+    await tester.tap(find.byKey(const ValueKey('history-course-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, '未关联课程'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('课程：未关联课程'), findsOneWidget);
+    expect(find.byType(ListTile), findsNWidgets(1));
+    expect(find.text('高等数学'), findsNothing);
   });
 
   testWidgets('搜索框随滚动逐帧上滑，筛选条钉在顶部', (tester) async {

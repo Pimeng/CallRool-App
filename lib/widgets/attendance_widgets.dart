@@ -112,6 +112,18 @@ class PersonRow extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (person.fieldSummary.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        person.fieldSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

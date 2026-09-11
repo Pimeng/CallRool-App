@@ -10,13 +10,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/attendance.dart';
 import 'models/attendance_copy_template.dart';
+import 'models/attendance_record.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
+import 'services/attendance_history_store.dart';
 import 'services/quick_import/backend_binding.dart';
+import 'services/storage_keys.dart';
 import 'theme/app_theme.dart';
+import 'widgets/attendance_history_page.dart';
 import 'widgets/attendance_widgets.dart';
+import 'widgets/backup_restore_page.dart';
 import 'widgets/copy_format_dialog.dart';
 import 'widgets/random_picker_page.dart';
+import 'widgets/roster_editor_page.dart';
 import 'widgets/wakeup_schedule_dialog.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
@@ -122,6 +128,89 @@ class _AddPersonDialogState extends State<_AddPersonDialog> {
       ),
     ],
   );
+}
+
+/// 保存考勤记录前的确认弹窗：填写备注，并提示还有多少人未点名。
+class _SaveRecordDialog extends StatefulWidget {
+  const _SaveRecordDialog({
+    required this.suggestedNote,
+    required this.courseSummary,
+    required this.unmarkedCount,
+  });
+
+  final String suggestedNote;
+  final String? courseSummary;
+  final int unmarkedCount;
+
+  @override
+  State<_SaveRecordDialog> createState() => _SaveRecordDialogState();
+}
+
+class _SaveRecordDialogState extends State<_SaveRecordDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.suggestedNote,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('保存当前考勤记录'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '备注',
+                helperText: '留空则使用课程名或当前时间',
+              ),
+              onSubmitted: (value) => Navigator.pop(context, value),
+            ),
+            if (widget.courseSummary != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                '课程信息：${widget.courseSummary}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (widget.unmarkedCount > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                '还有 ${widget.unmarkedCount} 人未点名，记录中会保留为“未点名”。',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
 }
 
 typedef _ImportRosterResult = ({List<String> names, bool replace});
@@ -312,9 +401,15 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
 
 /// 工具箱 Tab：集中放置与考勤相关的小工具。
 class _ToolboxTab extends StatelessWidget {
-  const _ToolboxTab({required this.onRandomPick});
+  const _ToolboxTab({
+    required this.onRandomPick,
+    required this.onOpenHistory,
+    required this.historyCount,
+  });
 
   final VoidCallback onRandomPick;
+  final VoidCallback onOpenHistory;
+  final int historyCount;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -333,6 +428,20 @@ class _ToolboxTab extends StatelessWidget {
             onTap: onRandomPick,
           ),
         ),
+        const SizedBox(height: 22),
+        const _SectionLabel('记录'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.history_rounded),
+            title: const Text('考勤记录'),
+            subtitle: Text(
+              historyCount == 0 ? '还没有保存的记录' : '已保存 $historyCount 条记录',
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onOpenHistory,
+          ),
+        ),
       ],
     ),
   );
@@ -343,19 +452,23 @@ class _SettingsTab extends StatelessWidget {
     required this.hasPeople,
     required this.scheduleName,
     required this.lastModifiedLabel,
+    required this.onEditRoster,
     required this.onImportRoster,
     required this.onExportRoster,
     required this.onCustomizeCopyFormat,
     required this.onSyncSchedule,
+    required this.onBackupRestore,
   });
 
   final bool hasPeople;
   final String? scheduleName;
   final String lastModifiedLabel;
+  final VoidCallback onEditRoster;
   final VoidCallback onImportRoster;
   final VoidCallback onExportRoster;
   final VoidCallback onCustomizeCopyFormat;
   final VoidCallback onSyncSchedule;
+  final VoidCallback onBackupRestore;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -368,6 +481,14 @@ class _SettingsTab extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
+              ListTile(
+                leading: const Icon(Icons.edit_note_rounded),
+                title: const Text('编辑名单'),
+                subtitle: const Text('修改姓名、自定义扩展字段（宿舍、学号等）'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: onEditRoster,
+              ),
+              const Divider(height: 1, indent: 56),
               ListTile(
                 leading: const Icon(Icons.upload_file_rounded),
                 title: const Text('导入名单'),
@@ -409,6 +530,18 @@ class _SettingsTab extends StatelessWidget {
             subtitle: Text(scheduleName ?? '尚未配置'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: onSyncSchedule,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const _SectionLabel('数据'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.backup_rounded),
+            title: const Text('备份与还原'),
+            subtitle: const Text('导出或恢复名单、考勤记录、扩展字段与课程信息'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onBackupRestore,
           ),
         ),
         const SizedBox(height: 26),
@@ -673,13 +806,14 @@ void main() {
 
 class _RollCallPageState extends State<RollCallPage>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  static const _storageKey = 'roll_call_people_v1';
-  static const _hasImportedRosterKey = 'roll_call_has_imported_v1';
-  static const _lastModifiedStorageKey = 'roll_call_last_modified_v1';
-  static const _wakeUpAuthTokenKey = 'wakeup_auth_token_v1';
-  static const _wakeUpScheduleDataKey = 'wakeup_schedule_data_v1';
-  static const _wakeUpScheduleSyncedAtKey = 'wakeup_schedule_synced_at_v1';
-  static const _attendanceCopyTemplateKey = 'attendance_copy_template_v2';
+  static const _storageKey = StorageKeys.people;
+  static const _hasImportedRosterKey = StorageKeys.hasImportedRoster;
+  static const _lastModifiedStorageKey = StorageKeys.lastModified;
+  static const _wakeUpAuthTokenKey = StorageKeys.wakeUpAuthToken;
+  static const _wakeUpScheduleDataKey = StorageKeys.wakeUpScheduleData;
+  static const _wakeUpScheduleSyncedAtKey = StorageKeys.wakeUpScheduleSyncedAt;
+  static const _attendanceCopyTemplateKey = StorageKeys.attendanceCopyTemplate;
+  static const _personFieldsKey = StorageKeys.personFields;
   static const _defaultNames = [
     '刘一',
     '陈二',
@@ -719,6 +853,12 @@ class _RollCallPageState extends State<RollCallPage>
   WakeUpSchedule? _wakeUpSchedule;
   DateTime? _wakeUpScheduleSyncedAt;
   String? _attendanceCopyTemplate;
+
+  /// 自定义扩展字段的字段名（如宿舍、学号），在「编辑名单」中增删。
+  List<String> _personFields = List.of(kDefaultPersonFields);
+
+  /// 已保存的考勤历史记录，最新的在最前面。
+  final List<AttendanceRecord> _attendanceHistory = [];
 
   @override
   void initState() {
@@ -816,11 +956,24 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
+    _people.clear();
+    _selected.clear();
+    _selectionMode = false;
     _lastModifiedAt = DateTime.tryParse(
       prefs.getString(_lastModifiedStorageKey) ?? '',
     );
+    // 先清空再按存储重建，这样「备份还原」后重载不会残留旧数据。
+    _wakeUpSchedule = null;
+    _wakeUpScheduleSyncedAt = null;
     final cachedSchedule = prefs.getString(_wakeUpScheduleDataKey);
     _attendanceCopyTemplate = prefs.getString(_attendanceCopyTemplateKey);
+    final rawFields = prefs.getString(_personFieldsKey);
+    _personFields = rawFields == null
+        ? List.of(kDefaultPersonFields)
+        : _decodePersonFields(rawFields);
+    _attendanceHistory
+      ..clear()
+      ..addAll(AttendanceHistoryStore.load(prefs));
     if (cachedSchedule != null && cachedSchedule.isNotEmpty) {
       try {
         _wakeUpSchedule = WakeUpSchedule.parse(cachedSchedule);
@@ -885,6 +1038,32 @@ class _RollCallPageState extends State<RollCallPage>
     ]);
   }
 
+  List<String> _decodePersonFields(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return normalizePersonFields(decoded.map((item) => item.toString()));
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  Future<void> _savePersonFields() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_personFieldsKey, jsonEncode(_personFields));
+  }
+
+  Future<void> _saveAttendanceHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await AttendanceHistoryStore.save(prefs, _attendanceHistory);
+  }
+
+  /// 从本地存储重新加载全部数据（备份还原后调用）。
+  Future<void> _reloadFromStorage() async {
+    if (mounted) setState(() => _loading = true);
+    await _load();
+  }
+
   int _count(AttendanceStatus status) {
     final cached = _statusCountsCache;
     if (cached != null) return cached[status] ?? 0;
@@ -920,11 +1099,7 @@ class _RollCallPageState extends State<RollCallPage>
     final visible = <_VisiblePerson>[];
     for (var index = 0; index < _people.length; index++) {
       final person = _people[index];
-      final searched =
-          keyword.isEmpty ||
-          person.name.toLowerCase().contains(keyword) ||
-          person.fullPinyin.contains(keyword) ||
-          person.pinyinInitials.contains(keyword);
+      final searched = keyword.isEmpty || person.searchText.contains(keyword);
       final filtered = switch (_filter) {
         RosterFilter.all => true,
         RosterFilter.unmarked => person.status == AttendanceStatus.unmarked,
@@ -1561,6 +1736,102 @@ class _RollCallPageState extends State<RollCallPage>
     );
   }
 
+  /// 把当前考勤快照保存成一条历史记录，可从「工具箱 > 考勤记录」回看。
+  Future<void> _saveAttendanceRecord() async {
+    if (_people.isEmpty) return;
+    final now = DateTime.now();
+    final courses =
+        _wakeUpSchedule?.currentCoursesAt(now) ?? const <CurrentCourse>[];
+    final course = courses.isEmpty ? null : courses.first;
+    final suggestedNote = course?.name ?? _formatCompactDateTime(now);
+    final note = await showDialog<String>(
+      context: context,
+      builder: (_) => _SaveRecordDialog(
+        suggestedNote: suggestedNote,
+        courseSummary: course?.summary,
+        unmarkedCount: _count(AttendanceStatus.unmarked),
+      ),
+    );
+    if (note == null || !mounted) return;
+    final record = AttendanceRecord(
+      id: '${now.microsecondsSinceEpoch}',
+      savedAt: now,
+      note: note.trim().isEmpty ? suggestedNote : note.trim(),
+      courseName: course?.name,
+      teacher: course?.teacher,
+      room: course?.room,
+      timeRange: course == null ? null : '${course.startTime}-${course.endTime}',
+      entries: [
+        for (final person in _people)
+          AttendanceRecordEntry(
+            personId: person.id,
+            name: person.name,
+            status: person.status,
+            fields: Map.of(person.fields),
+          ),
+      ],
+    );
+    setState(() => _attendanceHistory.insert(0, record));
+    await _saveAttendanceHistory();
+    _toast('已保存考勤记录');
+  }
+
+  Future<void> _openAttendanceHistory() async {
+    final updated = await Navigator.of(context).push<List<AttendanceRecord>>(
+      MaterialPageRoute(
+        builder: (_) => AttendanceHistoryPage(records: _attendanceHistory),
+      ),
+    );
+    if (!mounted || updated == null) return;
+    setState(() {
+      _attendanceHistory
+        ..clear()
+        ..addAll(updated);
+    });
+    await _saveAttendanceHistory();
+  }
+
+  Future<void> _openRosterEditor() async {
+    final result = await Navigator.of(context).push<RosterEditorResult>(
+      MaterialPageRoute(
+        builder: (_) => RosterEditorPage(
+          people: _people,
+          fieldNames: _personFields,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    _invalidatePeopleCache();
+    setState(() {
+      _people
+        ..clear()
+        ..addAll(result.people);
+      _personFields = result.fieldNames;
+      _selected.removeWhere(
+        (id) => !_people.any((person) => person.id == id),
+      );
+      if (_people.isEmpty) _selectionMode = false;
+      if (_people.isNotEmpty) {
+        _nextId =
+            _people
+                .map((person) => person.id)
+                .reduce((a, b) => a > b ? a : b) +
+            1;
+      }
+    });
+    await _save();
+    await _savePersonFields();
+  }
+
+  Future<void> _openBackupRestore() async {
+    final restored = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const BackupRestorePage()),
+    );
+    if (restored != true || !mounted) return;
+    await _reloadFromStorage();
+    _toast('数据已还原');
+  }
+
   bool get _showActionButton => _tab == _HomeTab.attendance && !_selectionMode;
 
   /// 考勤 Tab 不设标题栏，头部只有搜索框与筛选条；其余 Tab 保留各自的标题栏。
@@ -1594,15 +1865,19 @@ class _RollCallPageState extends State<RollCallPage>
                 _HomeTab.attendance => _buildAttendanceTab(isWide),
                 _HomeTab.toolbox => _ToolboxTab(
                   onRandomPick: _pickRandomPerson,
+                  onOpenHistory: _openAttendanceHistory,
+                  historyCount: _attendanceHistory.length,
                 ),
                 _HomeTab.settings => _SettingsTab(
                   hasPeople: _people.isNotEmpty,
                   scheduleName: _wakeUpSchedule?.name,
                   lastModifiedLabel: _lastModifiedLabel,
+                  onEditRoster: _openRosterEditor,
                   onImportRoster: _openImportPage,
                   onExportRoster: _exportRoster,
                   onCustomizeCopyFormat: _openCopyFormatPage,
                   onSyncSchedule: _syncWakeUpSchedule,
+                  onBackupRestore: _openBackupRestore,
                 ),
               },
         floatingActionButton: (!_loading && _showActionButton)
@@ -1682,6 +1957,11 @@ class _RollCallPageState extends State<RollCallPage>
   Widget _buildActionMenu() {
     final unmarked = _count(AttendanceStatus.unmarked);
     final actions = <({IconData icon, String label, VoidCallback? onTap})>[
+      (
+        icon: Icons.save_rounded,
+        label: '保存当前考勤记录',
+        onTap: _people.isEmpty ? null : _saveAttendanceRecord,
+      ),
       (icon: Icons.person_add_alt_1_rounded, label: '添加人员', onTap: _addPerson),
       (
         icon: Icons.content_copy_rounded,
@@ -1746,7 +2026,7 @@ class _RollCallPageState extends State<RollCallPage>
       controller: _searchController,
       onChanged: _handleSearchChanged,
       decoration: InputDecoration(
-        hintText: '搜索姓名',
+        hintText: '搜索姓名、学号、宿舍…',
         prefixIcon: const Icon(Icons.search_rounded),
         suffixIcon: _searchController.text.isEmpty
             ? null
