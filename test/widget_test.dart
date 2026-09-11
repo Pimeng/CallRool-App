@@ -23,16 +23,42 @@ Future<void> _pumpApp(
   await tester.pumpAndSettle();
 }
 
-Future<void> _openCopyFormatEditor(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('设置'));
+/// 切换到主页底部导航栏的某个 Tab。
+Future<void> _openTab(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.descendant(of: find.byType(NavigationBar), matching: find.text(label)),
+  );
   await tester.pumpAndSettle();
+}
+
+/// 展开右下角悬浮按钮菜单并点击其中一项操作。
+Future<void> _tapAction(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
+const _fabToggleKey = ValueKey('fab-menu-toggle');
+
+/// 读取悬浮菜单里某一项当前的弹出进度：0 = 完全收起，1 = 完全展开。
+double _menuEntryProgress(WidgetTester tester, String label) {
+  final fade = tester.widget<FadeTransition>(
+    find
+        .ancestor(of: find.text(label), matching: find.byType(FadeTransition))
+        .first,
+  );
+  return fade.opacity.value;
+}
+
+Future<void> _openCopyFormatEditor(WidgetTester tester) async {
+  await _openTab(tester, '设置');
   await tester.tap(find.text('自定义复制格式'));
   await tester.pumpAndSettle();
 }
 
 Future<void> _openRandomPicker(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('设置'));
-  await tester.pumpAndSettle();
+  await _openTab(tester, '工具箱');
   await tester.tap(find.widgetWithText(ListTile, '随机点人'));
   await tester.pumpAndSettle();
 }
@@ -155,7 +181,10 @@ void main() {
   testWidgets('首次启动使用内置名单', (tester) async {
     await _pumpApp(tester);
 
-    expect(find.text('快捷考勤喵'), findsOneWidget);
+    // 首页只有搜索栏与筛选条，没有标题栏/Logo。
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
     expect(find.text('刘一'), findsOneWidget);
     expect(find.text('名单还是空的'), findsNothing);
 
@@ -223,8 +252,7 @@ void main() {
   testWidgets('复制未完成考勤前显示提醒', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _tapAction(tester, '复制考勤情况');
     expect(find.text('还有 10 人未点名'), findsOneWidget);
     expect(find.text('继续复制'), findsOneWidget);
   });
@@ -319,8 +347,7 @@ void main() {
     await tester.pumpWidget(const RollCallApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _tapAction(tester, '复制考勤情况');
     await tester.tap(find.text('继续复制'));
     await tester.pumpAndSettle();
 
@@ -356,34 +383,179 @@ void main() {
     await tester.pumpWidget(const RollCallApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _tapAction(tester, '复制考勤情况');
 
     expect(copiedText, '刘一、陈二|2|张三|1|李四|1|王五|1');
   });
 
-  testWidgets('设置入口打开独立二级页面', (tester) async {
+  testWidgets('底部导航切换到工具箱与设置页', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('设置'));
-    await tester.pumpAndSettle();
+    await _openTab(tester, '工具箱');
+    expect(find.widgetWithText(AppBar, '工具箱'), findsOneWidget);
+    expect(find.text('抽签'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, '随机点人'), findsOneWidget);
 
+    await _openTab(tester, '设置');
     expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
     expect(find.text('名单'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
-    expect(find.text('随机点人'), findsNWidgets(2));
     expect(find.text('课程表'), findsOneWidget);
     expect(find.text('导入名单'), findsOneWidget);
     expect(find.text('导出名单'), findsOneWidget);
     expect(find.text('自定义复制格式'), findsOneWidget);
     expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
+    expect(find.textContaining('上次修改：'), findsOneWidget);
+    expect(find.text('随机点人'), findsNothing);
     expect(find.text('复制考勤情况'), findsNothing);
     expect(find.text('未点名全部标记为旷课'), findsNothing);
     expect(find.text('重置考勤'), findsNothing);
 
-    await tester.pageBack();
+    await _openTab(tester, '考勤');
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
+  });
+
+  testWidgets('搜索框随滚动逐帧上滑，筛选条钉在顶部', (tester) async {
+    await _pumpApp(tester);
+
+    // 滑出视口后 sliver 会被视口标记为 offstage，find.byType 默认会跳过它，
+    // 这里要显式带上 offstage 的控件才能量到它被推到了哪儿。
+    final searchField = find.byType(TextField, skipOffstage: false);
+    final chips = find.widgetWithText(FilterChip, '全部');
+
+    // 名单滚动起来后第一行可能被钉住的筛选条挡住或移出屏幕，
+    // 直接 drag 它会打空，所以固定从列表中间的空白处拖。
+    final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+    Future<void> dragRoster(double dy) async {
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * .6),
+        Offset(0, dy),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final searchAtRest = tester.getRect(searchField);
+    final chipsAtRest = tester.getRect(chips);
+
+    // 小幅度上滑：搜索框跟手整体上移，高度不变 ——
+    // 是滚动驱动的位移，不是过阈值就整块塌成 0 高的折叠动画。
+    await dragRoster(-40);
+    final searchSmall = tester.getRect(searchField);
+    expect(searchSmall.height, closeTo(searchAtRest.height, 1));
+    expect(searchSmall.top, lessThan(searchAtRest.top));
+
+    // 继续上滑：搜索框完全离开视口，筛选条上移后钉住。
+    await dragRoster(-200);
+    final chipsPinned = tester.getRect(chips);
+    expect(chipsPinned.top, lessThan(chipsAtRest.top));
+    expect(
+      tester.getRect(searchField).bottom,
+      lessThanOrEqualTo(chipsPinned.top + 1),
+    );
+
+    // 再滑一段，筛选条位置不再变化（已钉住）。
+    await dragRoster(-120);
+    expect(tester.getRect(chips).top, closeTo(chipsPinned.top, 1));
+
+    // 滑回顶部：搜索框回到原位。
+    await dragRoster(600);
+    expect(tester.getRect(searchField).top, closeTo(searchAtRest.top, 6));
+  });
+
+  testWidgets('右下角悬浮菜单收纳原顶部栏操作', (tester) async {
+    await _pumpApp(tester);
+
+    expect(find.text('添加人员'), findsNothing);
+    expect(find.text('复制考勤情况'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
     await tester.pumpAndSettle();
-    expect(find.text('快捷考勤喵'), findsOneWidget);
+
+    expect(find.text('添加人员'), findsOneWidget);
+    expect(find.text('复制考勤情况'), findsOneWidget);
+    expect(find.text('未点名全部标记为旷课'), findsOneWidget);
+    expect(find.text('重置考勤'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('添加人员'), findsNothing);
+  });
+
+  testWidgets('悬浮菜单项从下往上依次弹出且收起有动画', (tester) async {
+    await _pumpApp(tester);
+
+    final fabBefore = tester.getCenter(find.byKey(_fabToggleKey));
+
+    await tester.tap(find.byKey(_fabToggleKey));
+    await tester.pump();
+    // 第一帧：菜单项已经挂上，但都还没开始弹。
+    expect(find.text('重置考勤'), findsOneWidget);
+    expect(_menuEntryProgress(tester, '重置考勤'), 0);
+    expect(_menuEntryProgress(tester, '添加人员'), 0);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    final nearest = _menuEntryProgress(tester, '重置考勤');
+    final farthest = _menuEntryProgress(tester, '添加人员');
+    expect(nearest, greaterThan(0));
+    // 离悬浮按钮最近的一项先弹出来，最远的一项还在等。
+    expect(nearest, greaterThan(farthest));
+    // 展开过程中按钮本身不能被顶走。
+    expect(
+      (tester.getCenter(find.byKey(_fabToggleKey)).dy - fabBefore.dy).abs(),
+      lessThan(.5),
+    );
+
+    await tester.pumpAndSettle();
+    expect(_menuEntryProgress(tester, '重置考勤'), 1);
+    expect(_menuEntryProgress(tester, '添加人员'), 1);
+
+    // 展开后必须贴着右下角的按钮，不能铺满整行或跑到屏幕左边去。
+    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final fabRect = tester.getRect(find.byKey(_fabToggleKey));
+    expect(fabRect.right, lessThanOrEqualTo(screen.width));
+    for (final label in ['添加人员', '复制考勤情况', '未点名全部标记为旷课', '重置考勤']) {
+      final rect = tester.getRect(find.text(label));
+      // 文本起点已过屏幕中线（项的高度短、宽度也不该被撑开）。
+      expect(
+        rect.left,
+        greaterThan(screen.width / 2),
+        reason: '$label 不应该跑到左边',
+      );
+      // 与按钮右缘基本对齐（差值只是项内部的右侧内边距）。
+      expect(fabRect.right - rect.right, inInclusiveRange(0, 40));
+    }
+
+    // 收起也要是动画：过一帧后菜单项应该还在，只是缩回去了。
+    await tester.tap(find.byKey(_fabToggleKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.text('添加人员'), findsOneWidget);
+    expect(_menuEntryProgress(tester, '重置考勤'), lessThan(1));
+
+    await tester.pumpAndSettle();
+    expect(find.text('添加人员'), findsNothing);
+  });
+
+  testWidgets('统计数量并入筛选条角标', (tester) async {
+    await _pumpApp(tester);
+
+    for (final entry in {
+      '全部': '10',
+      '未点名': '10',
+      '正常': '0',
+      '异常': '0',
+      '请假': '0',
+    }.entries) {
+      expect(
+        find.descendant(
+          of: find.widgetWithText(FilterChip, entry.key),
+          matching: find.text(entry.value),
+        ),
+        findsOneWidget,
+        reason: '${entry.key} 筛选上应显示 ${entry.value}',
+      );
+    }
   });
 
   testWidgets('复制考勤时写入当前课程', (tester) async {
@@ -405,8 +577,7 @@ void main() {
     await tester.pumpWidget(const RollCallApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _tapAction(tester, '复制考勤情况');
     await tester.tap(find.text('继续复制'));
     await tester.pumpAndSettle();
 
@@ -419,8 +590,7 @@ void main() {
       initialValues: const {'wakeup_auth_token_v1': 'saved-token'},
     );
 
-    await tester.tap(find.byTooltip('设置'));
-    await tester.pumpAndSettle();
+    await _openTab(tester, '设置');
     await tester.tap(find.text('同步 WakeUp 课程表'));
     await tester.pumpAndSettle();
 
@@ -455,8 +625,7 @@ void main() {
   testWidgets('首次导入以替换为主操作且不二次确认', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('设置'));
-    await tester.pumpAndSettle();
+    await _openTab(tester, '设置');
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(AppBar, '导入名单'), findsOneWidget);
@@ -470,8 +639,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '替换现有'));
     await tester.pumpAndSettle();
     expect(find.text('确认替换现有名单？'), findsNothing);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    await _openTab(tester, '考勤');
     expect(find.text('新同学'), findsOneWidget);
     expect(find.text('刘一'), findsNothing);
 
@@ -489,8 +657,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.byTooltip('设置'));
-    await tester.pumpAndSettle();
+    await _openTab(tester, '设置');
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新同学');
@@ -512,8 +679,7 @@ void main() {
   testWidgets('追加名单时输入控制器保持到页面退出完成', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('设置'));
-    await tester.pumpAndSettle();
+    await _openTab(tester, '设置');
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新同学');
@@ -549,8 +715,7 @@ void main() {
   testWidgets('添加人员时可以选择初始考勤状态', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('添加人员'));
-    await tester.pumpAndSettle();
+    await _tapAction(tester, '添加人员');
     await tester.enterText(find.byType(TextField).last, '王小明');
     await tester.tap(find.byType(DropdownButtonFormField<AttendanceStatus>));
     await tester.pumpAndSettle();
@@ -622,8 +787,20 @@ void main() {
     expect(saved, contains('"name":"刘一","status":"late"'));
   });
 
-  testWidgets('320 宽度顶部栏不溢出', (tester) async {
+  testWidgets('320 宽度各 Tab 与悬浮菜单不溢出', (tester) async {
     await _pumpApp(tester, size: const Size(320, 568));
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+    await tester.pumpAndSettle();
+
+    await _openTab(tester, '工具箱');
+    expect(tester.takeException(), isNull);
+
+    await _openTab(tester, '设置');
     expect(tester.takeException(), isNull);
   });
 
@@ -644,9 +821,10 @@ void main() {
     await _finishSpin(tester);
 
     expect(find.text('恭喜被抽中'), findsOneWidget);
-    final drawn = ['正常甲', '正常乙']
-        .where((name) => find.text(name).evaluate().isNotEmpty)
-        .toList();
+    final drawn = [
+      '正常甲',
+      '正常乙',
+    ].where((name) => find.text(name).evaluate().isNotEmpty).toList();
     expect(drawn, hasLength(1));
     // 非正常状态的人不在候选人里，页面上不会出现。
     expect(find.text('公假丙'), findsNothing);
@@ -736,7 +914,11 @@ void main() {
 
     final rollingName = tester.widget<Text>(find.byKey(rollingKey));
     final rollingPanel = tester.getSize(
-      find.ancestor(of: find.byKey(rollingKey), matching: find.byType(Container))
+      find
+          .ancestor(
+            of: find.byKey(rollingKey),
+            matching: find.byType(Container),
+          )
           .first,
     );
 
@@ -744,7 +926,8 @@ void main() {
 
     final resultName = tester.widget<Text>(find.byKey(resultKey));
     final resultPanel = tester.getSize(
-      find.ancestor(of: find.byKey(resultKey), matching: find.byType(Container))
+      find
+          .ancestor(of: find.byKey(resultKey), matching: find.byType(Container))
           .first,
     );
 
@@ -869,16 +1052,18 @@ void main() {
 
     await tester.tap(find.text('抽取 1 人'));
     await _finishSpin(tester);
-    final first = ['甲', '乙'].firstWhere(
-      (name) => find.text(name).evaluate().isNotEmpty,
-    );
+    final first = [
+      '甲',
+      '乙',
+    ].firstWhere((name) => find.text(name).evaluate().isNotEmpty);
     expect(find.text('正常到勤 2 人，剩余可抽 1 人'), findsOneWidget);
 
     await tester.tap(find.text('抽取 1 人'));
     await _finishSpin(tester);
-    final second = ['甲', '乙'].firstWhere(
-      (name) => find.text(name).evaluate().isNotEmpty,
-    );
+    final second = [
+      '甲',
+      '乙',
+    ].firstWhere((name) => find.text(name).evaluate().isNotEmpty);
     expect(second, isNot(first));
     expect(find.text('正常到勤 2 人，剩余可抽 0 人'), findsOneWidget);
     expect(find.text('已全部抽完'), findsOneWidget);

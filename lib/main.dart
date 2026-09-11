@@ -310,100 +310,126 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
   );
 }
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({
-    required this.hasPeople,
-    required this.scheduleName,
-    required this.onImportRoster,
-    required this.onExportRoster,
-    required this.onCustomizeCopyFormat,
-    required this.onSyncSchedule,
-    required this.onRandomPick,
-  });
+/// 工具箱 Tab：集中放置与考勤相关的小工具。
+class _ToolboxTab extends StatelessWidget {
+  const _ToolboxTab({required this.onRandomPick});
 
-  final bool hasPeople;
-  final String? scheduleName;
-  final VoidCallback onImportRoster;
-  final VoidCallback onExportRoster;
-  final VoidCallback onCustomizeCopyFormat;
-  final VoidCallback onSyncSchedule;
   final VoidCallback onRandomPick;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('设置')),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          const _SettingsSectionLabel('名单'),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.upload_file_rounded),
-                  title: const Text('导入名单'),
-                  subtitle: const Text('从文本或 TXT 文件追加、替换名单'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: onImportRoster,
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  enabled: hasPeople,
-                  leading: const Icon(Icons.download_rounded),
-                  title: const Text('导出名单'),
-                  subtitle: const Text('将当前名单保存为 TXT 文件'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: hasPeople ? onExportRoster : null,
-                ),
-              ],
-            ),
+  Widget build(BuildContext context) => SafeArea(
+    top: false,
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      children: [
+        const _SectionLabel('抽签'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.casino_rounded),
+            title: const Text('随机点人'),
+            subtitle: const Text('从正常到勤人员中抽签，支持批量与不重复'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onRandomPick,
           ),
-          const SizedBox(height: 22),
-          const _SettingsSectionLabel('复制'),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.tune_rounded),
-              title: const Text('自定义复制格式'),
-              subtitle: const Text('编辑考勤汇总的内容和变量'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: onCustomizeCopyFormat,
-            ),
-          ),
-          const SizedBox(height: 22),
-          const _SettingsSectionLabel('随机点人'),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.casino_rounded),
-              title: const Text('随机点人'),
-              subtitle: const Text('从正常到勤人员中抽签，支持批量与不重复'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: onRandomPick,
-            ),
-          ),
-          const SizedBox(height: 22),
-          const _SettingsSectionLabel('课程表'),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.calendar_month_rounded),
-              title: const Text('同步 WakeUp 课程表'),
-              subtitle: Text(scheduleName ?? '尚未配置'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: onSyncSchedule,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     ),
   );
 }
 
-class _SettingsSectionLabel extends StatelessWidget {
-  const _SettingsSectionLabel(this.label);
+class _SettingsTab extends StatelessWidget {
+  const _SettingsTab({
+    required this.hasPeople,
+    required this.scheduleName,
+    required this.lastModifiedLabel,
+    required this.onImportRoster,
+    required this.onExportRoster,
+    required this.onCustomizeCopyFormat,
+    required this.onSyncSchedule,
+  });
+
+  final bool hasPeople;
+  final String? scheduleName;
+  final String lastModifiedLabel;
+  final VoidCallback onImportRoster;
+  final VoidCallback onExportRoster;
+  final VoidCallback onCustomizeCopyFormat;
+  final VoidCallback onSyncSchedule;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    top: false,
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      children: [
+        const _SectionLabel('名单'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.upload_file_rounded),
+                title: const Text('导入名单'),
+                subtitle: const Text('从文本或 TXT 文件追加、替换名单'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: onImportRoster,
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                enabled: hasPeople,
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('导出名单'),
+                subtitle: const Text('将当前名单保存为 TXT 文件'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: hasPeople ? onExportRoster : null,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        const _SectionLabel('复制'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.tune_rounded),
+            title: const Text('自定义复制格式'),
+            subtitle: const Text('编辑考勤汇总的内容和变量'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onCustomizeCopyFormat,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const _SectionLabel('课程表'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.calendar_month_rounded),
+            title: const Text('同步 WakeUp 课程表'),
+            subtitle: Text(scheduleName ?? '尚未配置'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onSyncSchedule,
+          ),
+        ),
+        const SizedBox(height: 26),
+        // 首页不再显示标题栏，名单的修改时间挪到这里做个脚注。
+        Center(
+          child: Text(
+            '上次修改：$lastModifiedLabel',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 设置/工具箱里的分组小标题。
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.label);
 
   final String label;
 
@@ -420,8 +446,59 @@ class _SettingsSectionLabel extends StatelessWidget {
   );
 }
 
-class _ToolbarSliverDelegate extends SliverPersistentHeaderDelegate {
-  const _ToolbarSliverDelegate({required this.child, required this.height});
+/// 右下角悬浮按钮菜单里的一项操作。
+class _FabMenuAction extends StatelessWidget {
+  const _FabMenuAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    final foreground = enabled
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant.withValues(alpha: .45);
+    return Material(
+      color: enabled
+          ? scheme.secondaryContainer
+          : scheme.surfaceContainerHighest.withValues(alpha: .7),
+      elevation: enabled ? 3 : 0,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: foreground),
+              const SizedBox(width: 9),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: foreground,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 固定在顶部的筛选条（考勤页 NestedScrollView 的 header sliver）。
+class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _PinnedHeaderDelegate({required this.child, required this.height});
 
   final Widget child;
   final double height;
@@ -442,8 +519,92 @@ class _ToolbarSliverDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  bool shouldRebuild(covariant _ToolbarSliverDelegate oldDelegate) =>
+  bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) =>
       oldDelegate.child != child || oldDelegate.height != height;
+}
+
+/// 悬浮菜单里的一项：随菜单开合做「弹出 / 收回」动画。
+///
+/// `order` 表示距离悬浮按钮的远近，0 是最靠按钮、最先弹出的一项，
+/// 这样展开时从下往上依次弹出，收起时又依次缩回按钮方向。
+class _FabMenuEntry extends StatelessWidget {
+  const _FabMenuEntry({
+    required this.animation,
+    required this.order,
+    required this.count,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final int order;
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // 每项错开 55% 的时间出发，剩下 45% 用来收尾，避免弹成一坨。
+    final start = count <= 1 ? 0.0 : order / count * .55;
+    final progress = animation.drive(
+      CurveTween(curve: Interval(start, 1, curve: Curves.easeOutCubic)),
+    );
+    return SizeTransition(
+      sizeFactor: progress,
+      // SizeTransition 内部是 Align(heightFactor: ...)，宽度默认会撑满可用空间，
+      // 只靠 alignment 定位就会把菜单项顶到屏幕左边。fixedCrossAxisSizeFactor: 1
+      // 让宽度仍然按内容收缩，项才会老老实实贴着右下角的按钮。
+      fixedCrossAxisSizeFactor: 1,
+      // 高度向着悬浮按钮的方向展开/收缩，避免按钮跳位。
+      alignment: AlignmentDirectional.bottomEnd,
+      child: FadeTransition(
+        opacity: progress,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, .35),
+            end: Offset.zero,
+          ).animate(progress),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: .8, end: 1).animate(progress),
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 筛选条上的数量角标，用来替代原先顶部的四块统计卡片。
+class _FilterCount extends StatelessWidget {
+  const _FilterCount(this.count, {required this.highlighted});
+
+  final int count;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? scheme.primary.withValues(alpha: .18)
+            : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$count',
+        style: TextStyle(
+          fontSize: 11,
+          height: 1.3,
+          fontWeight: FontWeight.w700,
+          color: highlighted ? scheme.primary : scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
 }
 
 class _LongPressReorderableDragStartListener
@@ -481,6 +642,9 @@ class _HapticDelayedMultiDragGestureRecognizer
   }
 }
 
+/// 主页的三个 Tab。
+enum _HomeTab { attendance, toolbox, settings }
+
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
 
@@ -508,7 +672,7 @@ void main() {
 }
 
 class _RollCallPageState extends State<RollCallPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const _storageKey = 'roll_call_people_v1';
   static const _hasImportedRosterKey = 'roll_call_has_imported_v1';
   static const _lastModifiedStorageKey = 'roll_call_last_modified_v1';
@@ -529,10 +693,11 @@ class _RollCallPageState extends State<RollCallPage>
     '郑十',
   ];
   final _searchController = TextEditingController();
-  final _topSearchFocusNode = FocusNode();
   final _rosterScrollController = ScrollController();
-  final _overviewKey = GlobalKey();
   final _quickImportBackend = createQuickImportBackend();
+
+  /// 驱动右下角菜单的展开/收起，同一根动画同时控制每项的错落节奏。
+  late final AnimationController _fabController;
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
@@ -540,15 +705,16 @@ class _RollCallPageState extends State<RollCallPage>
   String _visiblePeopleCacheKeyword = '';
   RosterFilter _visiblePeopleCacheFilter = RosterFilter.all;
   Map<AttendanceStatus, int>? _statusCountsCache;
+  _HomeTab _tab = _HomeTab.attendance;
   bool _loading = true;
   bool _hasImportedRoster = false;
   bool _selectionMode = false;
-  bool _overviewCollapsed = false;
-  bool _topSearchMode = false;
-  bool _keepOverviewHidden = false;
-  double _innerScrollOffset = 0;
-  ScrollPosition? _innerScrollPosition;
+  bool _fabOpen = false;
   int _nextId = 1;
+
+  /// 内层名单列表的滚动位置（NestedScrollView 注入）。
+  /// 「回到顶部」要同时归零内外两层位置。
+  ScrollPosition? _innerScrollPosition;
   DateTime? _lastModifiedAt;
   WakeUpSchedule? _wakeUpSchedule;
   DateTime? _wakeUpScheduleSyncedAt;
@@ -558,116 +724,76 @@ class _RollCallPageState extends State<RollCallPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _rosterScrollController.addListener(_handleRosterScroll);
+    _fabController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+      reverseDuration: const Duration(milliseconds: 180),
+    )..addStatusListener(_handleFabStatus);
     _load();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _rosterScrollController
-      ..removeListener(_handleRosterScroll)
-      ..dispose();
+    _fabController.dispose();
+    _rosterScrollController.dispose();
     _searchController.dispose();
-    _topSearchFocusNode.dispose();
     super.dispose();
   }
 
-  void _handleRosterScroll() {
-    if (!_rosterScrollController.hasClients || !mounted) return;
-    if (_keepOverviewHidden) {
-      if (_rosterScrollController.offset <= 1) {
-        setState(() {
-          _keepOverviewHidden = false;
-          _overviewCollapsed = false;
-        });
-      }
-      return;
-    }
-    final overviewContext = _overviewKey.currentContext;
-    final overviewRenderObject = overviewContext?.findRenderObject();
-    if (overviewRenderObject is! RenderBox) return;
-    final collapsed =
-        _rosterScrollController.offset >= overviewRenderObject.size.height - 1;
-    if (collapsed != _overviewCollapsed) {
-      setState(() => _overviewCollapsed = collapsed);
-    }
+  /// 收起动画跑完后把菜单项真正从树上摘掉。
+  void _handleFabStatus(AnimationStatus status) {
+    if (status == AnimationStatus.dismissed && mounted) setState(() {});
   }
 
-  void _openTopSearch() {
-    setState(() => _topSearchMode = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_topSearchMode && mounted) {
-        _topSearchFocusNode.requestFocus();
-      }
-    });
-  }
-
-  void _closeTopSearch() {
-    _searchController.clear();
-    _topSearchFocusNode.unfocus();
-    _invalidatePeopleCache();
-    final keepOverviewHidden = _innerScrollOffset > 1 || _overviewCollapsed;
+  void _toggleActionMenu() {
     setState(() {
-      _topSearchMode = false;
-      _keepOverviewHidden = keepOverviewHidden;
-      _overviewCollapsed = keepOverviewHidden;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final position = _innerScrollPosition;
-      if (position == null || !position.hasContentDimensions) return;
-      final targetOffset = _innerScrollOffset.clamp(
-        0.0,
-        position.maxScrollExtent,
-      );
-      if ((position.pixels - targetOffset).abs() > 0.5) {
-        position.jumpTo(targetOffset);
-      }
-      if (targetOffset <= 1 && mounted) {
-        setState(() {
-          _keepOverviewHidden = false;
-          _overviewCollapsed = false;
-        });
+      _fabOpen = !_fabOpen;
+      if (_fabOpen) {
+        _fabController.forward();
+      } else {
+        _fabController.reverse();
       }
     });
+  }
+
+  /// 选中菜单项后立即收起：马上会有弹窗或新页面盖上来，不必再走收起动画。
+  void _dismissActionMenu() {
+    _fabOpen = false;
+    _fabController.value = 0;
+    setState(() {});
+  }
+
+  void _selectTab(int index) {
+    final next = _HomeTab.values[index];
+    final reselected = next == _tab;
+    // 离开考勤页时悬浮菜单会被移除，状态要一并复位，避免下次进来残着展开。
+    _fabOpen = false;
+    _fabController.value = 0;
+    setState(() => _tab = next);
+    // 已经在考勤页时再点一次「考勤」，回到名单顶部（搜索框也顺带露出来）。
+    if (reselected && next == _HomeTab.attendance) _scrollToTop();
   }
 
   void _scrollToTop() {
-    if (!mounted || _topSearchMode) return;
-
-    if (_keepOverviewHidden) {
-      setState(() {
-        _keepOverviewHidden = false;
-        _overviewCollapsed = false;
-      });
+    if (!mounted) return;
+    const duration = Duration(milliseconds: 360);
+    const curve = Curves.easeOutCubic;
+    // 头部（搜索框）在外层位置，名单在内层位置，两个都要回到 0。
+    final innerPosition = _innerScrollPosition;
+    if (innerPosition != null && innerPosition.hasContentDimensions) {
+      innerPosition.animateTo(0, duration: duration, curve: curve);
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      const duration = Duration(milliseconds: 360);
-      const curve = Curves.easeOutCubic;
-      final innerPosition = _innerScrollPosition;
-      if (innerPosition != null && innerPosition.hasContentDimensions) {
-        innerPosition.animateTo(0, duration: duration, curve: curve);
-      }
-      if (_rosterScrollController.hasClients) {
-        _rosterScrollController.animateTo(0, duration: duration, curve: curve);
-      }
-    });
+    if (_rosterScrollController.hasClients) {
+      _rosterScrollController.animateTo(0, duration: duration, curve: curve);
+    }
   }
 
+  /// 记住内层名单列表的滚动位置，供「回到顶部」使用。
   bool _handleInnerScroll(ScrollNotification notification) {
-    if (notification.metrics.axis == Axis.vertical) {
-      _innerScrollOffset = notification.metrics.pixels;
-      _innerScrollPosition = Scrollable.maybeOf(notification.context!)
-          ?.position;
-      if (_keepOverviewHidden && _innerScrollOffset <= 1 && mounted) {
-        setState(() {
-          _keepOverviewHidden = false;
-          _overviewCollapsed = false;
-        });
-      }
+    final context = notification.context;
+    if (context != null && notification.metrics.axis == Axis.vertical) {
+      _innerScrollPosition = Scrollable.maybeOf(context)?.position;
     }
     return false;
   }
@@ -732,6 +858,7 @@ class _RollCallPageState extends State<RollCallPage>
     _hasImportedRoster =
         prefs.getBool(_hasImportedRosterKey) ?? !_isUsingDefaultRoster;
     await prefs.setBool(_hasImportedRosterKey, _hasImportedRoster);
+    _invalidatePeopleCache();
     if (mounted) setState(() => _loading = false);
   }
 
@@ -1434,336 +1561,183 @@ class _RollCallPageState extends State<RollCallPage>
     );
   }
 
-  void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _SettingsPage(
-          hasPeople: _people.isNotEmpty,
-          scheduleName: _wakeUpSchedule?.name,
-          onImportRoster: _openImportPage,
-          onExportRoster: _exportRoster,
-          onCustomizeCopyFormat: _openCopyFormatPage,
-          onSyncSchedule: _syncWakeUpSchedule,
-          onRandomPick: _pickRandomPerson,
-        ),
-      ),
-    );
+  bool get _showActionButton => _tab == _HomeTab.attendance && !_selectionMode;
+
+  /// 考勤 Tab 不设标题栏，头部只有搜索框与筛选条；其余 Tab 保留各自的标题栏。
+  PreferredSizeWidget? _buildAppBar() {
+    switch (_tab) {
+      case _HomeTab.attendance:
+        return null;
+      case _HomeTab.toolbox:
+        return AppBar(title: const Text('工具箱'));
+      case _HomeTab.settings:
+        return AppBar(title: const Text('设置'));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 840;
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 62,
-        titleSpacing: _topSearchMode ? 0 : 16,
-        scrolledUnderElevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        leading: _topSearchMode
-            ? const SizedBox(
-                width: 48,
-                child: Center(child: Icon(Icons.search_rounded)),
-              )
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 考勤页没有 AppBar，状态栏图标的明暗得自己声明，否则深色主题下可能
+    // 沿用系统主题的深色图标，贴在深色背景上看不见（有 AppBar 的 Tab 由它覆盖）。
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      ),
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : switch (_tab) {
+                _HomeTab.attendance => _buildAttendanceTab(isWide),
+                _HomeTab.toolbox => _ToolboxTab(
+                  onRandomPick: _pickRandomPerson,
+                ),
+                _HomeTab.settings => _SettingsTab(
+                  hasPeople: _people.isNotEmpty,
+                  scheduleName: _wakeUpSchedule?.name,
+                  lastModifiedLabel: _lastModifiedLabel,
+                  onImportRoster: _openImportPage,
+                  onExportRoster: _exportRoster,
+                  onCustomizeCopyFormat: _openCopyFormatPage,
+                  onSyncSchedule: _syncWakeUpSchedule,
+                ),
+              },
+        floatingActionButton: (!_loading && _showActionButton)
+            ? _buildActionMenu()
             : null,
-        title: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _topSearchMode ? null : _scrollToTop,
-          child: SizedBox(
-            width: double.infinity,
-            child: LayoutBuilder(
-              builder: (context, constraints) => TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0, end: _topSearchMode ? 1 : 0),
-                duration: const Duration(milliseconds: 420),
-                curve: Curves.easeInOutCubic,
-                builder: (context, progress, child) {
-                  return Stack(
-                    alignment: Alignment.centerLeft,
-                    children: [
-                      Opacity(
-                        opacity: 1 - progress,
-                        child: Tooltip(
-                          message: '回到顶部',
-                          child: InkWell(
-                            onTap: _scrollToTop,
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Row(
-                                children: [
-                                  const AppMark(),
-                                  const SizedBox(width: 10),
-                                  Flexible(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        const Text(
-                                          '快捷考勤喵',
-                                          style: TextStyle(
-                                            fontSize: 19,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        Text(
-                                          '上次修改：$_lastModifiedLabel',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      ClipRect(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: progress,
-                          child: SizedBox(
-                            width: constraints.maxWidth,
-                            child: child,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _topSearchFocusNode,
-                  onChanged: _handleSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: '搜索姓名',
-                    isDense: true,
-                    suffixIcon: _searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: '清除搜索',
-                            onPressed: () {
-                              _searchController.clear();
-                              _invalidatePeopleCache();
-                              setState(() {});
-                            },
-                            icon: const Icon(Icons.close_rounded),
-                          ),
+        bottomNavigationBar: _selectionMode
+            ? _buildBatchBar()
+            : NavigationBar(
+                selectedIndex: _tab.index,
+                onDestinationSelected: _selectTab,
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.fact_check_outlined),
+                    selectedIcon: Icon(Icons.fact_check_rounded),
+                    label: '考勤',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.widgets_outlined),
+                    selectedIcon: Icon(Icons.widgets_rounded),
+                    label: '工具箱',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings_rounded),
+                    label: '设置',
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceTab(bool isWide) {
+    final horizontal = isWide ? 28.0 : 14.0;
+    return SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 0),
+            // 搜索框放在非固定的 header sliver 里，随手指逐帧滑走；
+            // 筛选条固定在顶部，名单在内层滚动（NestedScrollView 会注入内层控制器）。
+            child: NestedScrollView(
+              controller: _rosterScrollController,
+              headerSliverBuilder: (context, bodyIsScrolled) => [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _buildSearchField(),
                   ),
                 ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _PinnedHeaderDelegate(
+                    height: 52,
+                    child: SizedBox.expand(
+                      child: ColoredBox(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        child: _buildFilterToolbar(isWide),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              body: NotificationListener<ScrollNotification>(
+                onNotification: _handleInnerScroll,
+                child: _buildRoster(isWide),
               ),
             ),
           ),
         ),
-        actions: [
-          if (_topSearchMode)
-            IconButton(
-              tooltip: '关闭搜索',
-              onPressed: _closeTopSearch,
-              icon: const Icon(Icons.close_rounded),
-            )
-          else if (_overviewCollapsed)
-            IconButton(
-              tooltip: '搜索姓名',
-              onPressed: _openTopSearch,
-              icon: const Icon(Icons.search_rounded),
-            ),
-          if (!_topSearchMode && !_selectionMode)
-            IconButton(
-              tooltip: '添加人员',
-              onPressed: _addPerson,
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-            ),
-          if (!_topSearchMode)
-            IconButton(
-              tooltip: '复制考勤情况',
-              onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
-              icon: const Icon(Icons.content_copy_rounded),
-            ),
-          if (!_topSearchMode)
-            IconButton(
-              tooltip: '未点名全部标记为旷课',
-              onPressed: _count(AttendanceStatus.unmarked) == 0
-                  ? null
-                  : _markUnmarkedTruancy,
-              icon: const Icon(Icons.assignment_late_outlined),
-            ),
-          if (!_topSearchMode)
-            IconButton(
-              tooltip: '重置考勤',
-              onPressed: _people.isEmpty ? null : _resetAttendance,
-              icon: const Icon(Icons.restart_alt_rounded),
-            ),
-          if (!_topSearchMode)
-            IconButton(
-              tooltip: '设置',
-              onPressed: _openSettings,
-              icon: const Icon(Icons.settings_outlined),
-            ),
-        ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1120),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      isWide ? 28 : 14,
-                      6,
-                      isWide ? 28 : 14,
-                      12,
-                    ),
-                    child: NestedScrollView(
-                      controller: _rosterScrollController,
-                      headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                        if (!_topSearchMode && !_keepOverviewHidden)
-                          SliverToBoxAdapter(
-                            child: Column(
-                              key: _overviewKey,
-                              children: [
-                                const SizedBox(height: 14),
-                                _buildStats(),
-                                const SizedBox(height: 16),
-                                _buildSearchToolbar(isWide),
-                                const SizedBox(height: 10),
-                              ],
-                            ),
-                          ),
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _ToolbarSliverDelegate(
-                            height: 52,
-                            child: SizedBox.expand(
-                              child: ColoredBox(
-                                color: Theme.of(context)
-                                    .scaffoldBackgroundColor,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
-                                  ),
-                                  child: _buildFilterToolbar(isWide),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      body: _buildRoster(isWide),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-      bottomNavigationBar: _selectionMode ? _buildBatchBar() : null,
     );
   }
 
-  Widget _buildStats() {
-    final availableWidth = MediaQuery.sizeOf(context).width - 28;
-    final isWide = MediaQuery.sizeOf(context).width >= 560;
-    final items = [
+  /// 右下角悬浮菜单，替代原来标题栏右侧的一排操作按钮。
+  Widget _buildActionMenu() {
+    final unmarked = _count(AttendanceStatus.unmarked);
+    final actions = <({IconData icon, String label, VoidCallback? onTap})>[
+      (icon: Icons.person_add_alt_1_rounded, label: '添加人员', onTap: _addPerson),
       (
-        '未点名',
-        '${_count(AttendanceStatus.unmarked)}/${_people.length}',
-        AttendanceStatus.unmarked.adaptiveColor(context),
-        Icons.pending_actions_rounded,
+        icon: Icons.content_copy_rounded,
+        label: '复制考勤情况',
+        onTap: _people.isEmpty ? null : _copyAttendanceSummary,
       ),
       (
-        '正常',
-        _count(AttendanceStatus.present),
-        AttendanceStatus.present.adaptiveColor(context),
-        Icons.check_circle_rounded,
+        icon: Icons.assignment_late_outlined,
+        label: '未点名全部标记为旷课',
+        onTap: unmarked == 0 ? null : _markUnmarkedTruancy,
       ),
       (
-        '异常',
-        _countAttendanceIssues(),
-        AttendanceStatus.truancy.adaptiveColor(context),
-        Icons.warning_amber_rounded,
-      ),
-      (
-        '请假',
-        _countLeaveTypes(),
-        AttendanceStatus.leave.adaptiveColor(context),
-        Icons.beach_access_rounded,
+        icon: Icons.restart_alt_rounded,
+        label: '重置考勤',
+        onTap: _people.isEmpty ? null : _resetAttendance,
       ),
     ];
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: isWide ? 4 : 2,
-        childAspectRatio: isWide ? 2.35 : (availableWidth >= 480 ? 4.0 : 2.6),
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-            side: BorderSide(color: Theme.of(context).dividerColor),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: Icon(item.$4, size: 19, color: item.$3),
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${item.$2}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            height: 1,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          item.$1,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    final showItems = _fabOpen || _fabController.value > 0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (showItems)
+          for (var index = 0; index < actions.length; index++)
+            _FabMenuEntry(
+              animation: _fabController,
+              // 列表第一个在最上面，所以离按钮最近的序号要倒着数。
+              order: actions.length - 1 - index,
+              count: actions.length,
+              child: _FabMenuAction(
+                icon: actions[index].icon,
+                label: actions[index].label,
+                onTap: actions[index].onTap == null
+                    ? null
+                    : () {
+                        _dismissActionMenu();
+                        actions[index].onTap!();
+                      },
+              ),
             ),
+        FloatingActionButton(
+          key: const ValueKey('fab-menu-toggle'),
+          tooltip: _fabOpen ? '收起操作' : '更多操作',
+          onPressed: _toggleActionMenu,
+          child: RotationTransition(
+            // 和菜单用同一根动画，展开和收起时图标都转得连贯。
+            turns: _fabController.drive(
+              Tween<double>(
+                begin: 0,
+                end: .125,
+              ).chain(CurveTween(curve: Curves.easeOutCubic)),
+            ),
+            child: const Icon(Icons.add_rounded),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -1790,11 +1764,11 @@ class _RollCallPageState extends State<RollCallPage>
 
   Widget _buildFilterChips() {
     final filters = [
-      (RosterFilter.all, '全部'),
-      (RosterFilter.unmarked, '未点名'),
-      (RosterFilter.present, '正常'),
-      (RosterFilter.issue, '异常'),
-      (RosterFilter.leave, '请假'),
+      (RosterFilter.all, '全部', _people.length),
+      (RosterFilter.unmarked, '未点名', _count(AttendanceStatus.unmarked)),
+      (RosterFilter.present, '正常', _count(AttendanceStatus.present)),
+      (RosterFilter.issue, '异常', _countAttendanceIssues()),
+      (RosterFilter.leave, '请假', _countLeaveTypes()),
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1802,7 +1776,14 @@ class _RollCallPageState extends State<RollCallPage>
         children: [
           for (final item in filters) ...[
             FilterChip(
-              label: Text(item.$2),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(item.$2),
+                  const SizedBox(width: 6),
+                  _FilterCount(item.$3, highlighted: _filter == item.$1),
+                ],
+              ),
               selected: _filter == item.$1,
               onSelected: (_) => _setFilter(item.$1),
             ),
@@ -1811,27 +1792,6 @@ class _RollCallPageState extends State<RollCallPage>
         ],
       ),
     );
-  }
-
-  Widget _buildSearchToolbar(bool isWide) {
-    final search = _buildSearchField();
-    if (isWide) {
-      return Row(
-        children: [
-          Text(
-            '名单',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(width: 260, child: search),
-          const Spacer(),
-        ],
-      );
-    }
-    return Row(children: [Expanded(child: search)]);
   }
 
   Widget _buildFilterToolbar(bool isWide) {
@@ -1906,16 +1866,18 @@ class _RollCallPageState extends State<RollCallPage>
         ),
       );
     }
+    // 这两个列表不能用 _rosterScrollController，它属于外层（头部）位置，
+    // 内层控制器由 NestedScrollView 通过 PrimaryScrollController 注入。
     final list = _selectionMode
         ? ListView.separated(
-            padding: const EdgeInsets.only(bottom: 82),
+            padding: const EdgeInsets.only(bottom: 104),
             itemCount: visible.length,
             separatorBuilder: (_, _) => const SizedBox(height: 7),
             itemBuilder: (context, index) =>
                 _buildPersonRow(visible[index], isWide),
           )
         : ReorderableListView.builder(
-            padding: const EdgeInsets.only(bottom: 82),
+            padding: const EdgeInsets.only(bottom: 104),
             itemCount: visible.length,
             buildDefaultDragHandles: false,
             onReorderItem: _reorderPeople,
@@ -1933,10 +1895,7 @@ class _RollCallPageState extends State<RollCallPage>
                 ),
           );
 
-    return NotificationListener<ScrollNotification>(
-      onNotification: _handleInnerScroll,
-      child: list,
-    );
+    return list;
   }
 
   Widget _buildPersonRow(_VisiblePerson item, bool isWide) {
