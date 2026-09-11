@@ -15,10 +15,17 @@ typedef _PersonDraft = ({String name, Map<String, String> fields});
 
 /// 字段管理里的一个草稿项。[original] 为原有字段名，新增项为 null，
 /// 用来在重命名时把旧值迁移到新字段名下。
+///
+/// [id] 只用于给列表项提供稳定 key：增删字段时 Flutter 会按 key 复用 Element，
+/// 否则同一位置的 TextField 会被换上另一个控制器。
 class _FieldDraft {
   _FieldDraft({this.original, String name = ''})
-    : controller = TextEditingController(text: name);
+    : id = _nextId++,
+      controller = TextEditingController(text: name);
 
+  static int _nextId = 0;
+
+  final int id;
   final String? original;
   final TextEditingController controller;
 
@@ -68,10 +75,13 @@ class _RosterEditorPageState extends State<RosterEditorPage> {
   }
 
   Future<void> _addPerson() async {
-    final name = await _promptName(
-      title: '添加人员',
-      confirmLabel: '添加',
-      nameLabel: '姓名',
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _NamePromptDialog(
+        title: '添加人员',
+        confirmLabel: '添加',
+        nameLabel: '姓名',
+      ),
     );
     if (name == null || !mounted) return;
     if (_people.any((person) => person.name.toLowerCase() == name.toLowerCase())) {
@@ -232,44 +242,64 @@ class _RosterEditorPageState extends State<RosterEditorPage> {
       ),
     );
   }
+}
 
-  Future<String?> _promptName({
-    required String title,
-    required String confirmLabel,
-    required String nameLabel,
-  }) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: nameLabel),
-          onSubmitted: (value) {
-            final name = value.trim();
-            if (name.isNotEmpty) Navigator.pop(dialogContext, name);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) Navigator.pop(dialogContext, name);
-            },
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return result;
+/// 只输入一个名称的对话框。
+///
+/// 控制器由对话框自己持有：如果改成在外面创建、`showDialog` 返回后立即
+/// `dispose()`，退场动画期间 TextField 还在树上，会抛
+/// 「A TextEditingController was used after being disposed」。
+class _NamePromptDialog extends StatefulWidget {
+  const _NamePromptDialog({
+    required this.title,
+    required this.confirmLabel,
+    required this.nameLabel,
+  });
+
+  final String title;
+  final String confirmLabel;
+  final String nameLabel;
+
+  @override
+  State<_NamePromptDialog> createState() => _NamePromptDialogState();
+}
+
+class _NamePromptDialogState extends State<_NamePromptDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(context, name);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      decoration: InputDecoration(labelText: widget.nameLabel),
+      onChanged: (_) => setState(() {}),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: _controller.text.trim().isEmpty ? null : _submit,
+        child: Text(widget.confirmLabel),
+      ),
+    ],
+  );
 }
 
 /// 编辑单个人员的姓名与扩展字段。
@@ -433,6 +463,7 @@ class _ManageFieldsDialogState extends State<_ManageFieldsDialog> {
               const SizedBox(height: 8),
               for (var index = 0; index < _drafts.length; index++)
                 Padding(
+                  key: ValueKey(_drafts[index].id),
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [

@@ -531,6 +531,59 @@ void main() {
     expect(find.widgetWithText(TextField, '班级'), findsOneWidget);
   });
 
+  testWidgets('编辑名单中添加人员不会因控制器释放而报错', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.tap(find.text('编辑名单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.person_add_alt_1_rounded));
+    await tester.pumpAndSettle();
+    // 名称为空时确认按钮禁用。
+    expect(
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, '添加')).onPressed,
+      isNull,
+    );
+
+    await tester.enterText(find.widgetWithText(TextField, '姓名'), '新同学');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '添加'));
+    // 这里必须让对话框完整退场（含动画），否则会命中
+    // 「A TextEditingController was used after being disposed」。
+    await tester.pumpAndSettle();
+
+    // 新成员追加在名单末尾，需要滚到底部才可见。
+    await tester.scrollUntilVisible(find.text('新同学'), 300);
+    expect(find.text('新同学'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('管理字段中删除字段不会因控制器释放而报错', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.tap(find.text('编辑名单'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.view_column_rounded));
+    await tester.pumpAndSettle();
+    // 默认两个字段（宿舍、学号），删掉第一个。
+    await tester.tap(find.byIcon(Icons.remove_circle_outline_rounded).first);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, '字段名'), findsOneWidget);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // 剩下的字段应是「学号」，而删掉的「宿舍」不再出现。
+    await tester.tap(find.text('刘一'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, '学号'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '宿舍'), findsNothing);
+  });
+
   testWidgets('备份与还原页展示本机数据统计', (tester) async {
     await _pumpApp(tester);
 
