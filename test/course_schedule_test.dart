@@ -10,6 +10,14 @@ const _shareData = '''
 [{"day":3,"endTime":"","endWeek":16,"id":7,"ownTime":false,"room":"实训室305","startNode":1,"startTime":"","startWeek":1,"step":2,"tableId":2,"teacher":"李老师","type":0},{"day":1,"endTime":"","endWeek":16,"id":8,"ownTime":false,"room":"教学楼101","startNode":1,"startTime":"","startWeek":1,"step":1,"tableId":2,"teacher":"王老师","type":2}]
 ''';
 
+const _multiCourseShareData = '''
+{"courseLen":60,"id":2,"name":"测试时间表"}
+[{"endTime":"09:00","node":1,"startTime":"08:00","timeTable":2},{"endTime":"11:00","node":2,"startTime":"10:00","timeTable":2},{"endTime":"15:00","node":3,"startTime":"14:00","timeTable":2}]
+{"maxWeek":20,"startDate":"2026-8-31","tableName":"多节课表"}
+[{"courseName":"第一节","id":1,"tableId":2},{"courseName":"第二节","id":2,"tableId":2},{"courseName":"第三节","id":3,"tableId":2}]
+[{"day":3,"endTime":"","endWeek":20,"id":1,"ownTime":false,"room":"A101","startNode":1,"startTime":"","startWeek":1,"step":1,"tableId":2,"teacher":"甲","type":0},{"day":3,"endTime":"","endWeek":20,"id":2,"ownTime":false,"room":"B202","startNode":2,"startTime":"","startWeek":1,"step":1,"tableId":2,"teacher":"乙","type":0},{"day":3,"endTime":"","endWeek":20,"id":3,"ownTime":false,"room":"C303","startNode":3,"startTime":"","startWeek":1,"step":1,"tableId":2,"teacher":"丙","type":0}]
+''';
+
 void main() {
   test('从 WakeUp 完整分享口令中提取 shareCode', () {
     const message =
@@ -50,6 +58,29 @@ void main() {
     );
     expect(schedule.currentCoursesAt(DateTime(2026, 9, 14, 8, 10)), isEmpty);
     expect(schedule.currentCoursesAt(DateTime(2026, 9, 2, 10)), isEmpty);
+  });
+
+  test('有当前课程时返回下一节课程', () {
+    final schedule = WakeUpSchedule.parse(_multiCourseShareData);
+    final now = DateTime(2026, 9, 2, 10, 30);
+
+    expect(schedule.currentCoursesAt(now).single.name, '第二节');
+    final upcoming = schedule.upcomingCoursesAt(now, limit: 1);
+    expect(upcoming.single.name, '第三节');
+    expect(upcoming.single.room, 'C303');
+    expect(upcoming.single.startTime, '14:00');
+    expect(upcoming.single.endTime, '15:00');
+  });
+
+  test('当前无课时返回接下来两节课程', () {
+    final schedule = WakeUpSchedule.parse(_multiCourseShareData);
+    final upcoming = schedule.upcomingCoursesAt(
+      DateTime(2026, 9, 2, 9, 30),
+      limit: 2,
+    );
+
+    expect(upcoming.map((course) => course.name), ['第二节', '第三节']);
+    expect(upcoming.map((course) => course.room), ['B202', 'C303']);
   });
 
   test('拒绝空的分享数据', () {

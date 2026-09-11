@@ -315,6 +315,7 @@ class _SettingsPage extends StatelessWidget {
     required this.scheduleName,
     required this.onImportRoster,
     required this.onExportRoster,
+    required this.onCustomizeCopyFormat,
     required this.onSyncSchedule,
   });
 
@@ -322,6 +323,7 @@ class _SettingsPage extends StatelessWidget {
   final String? scheduleName;
   final VoidCallback onImportRoster;
   final VoidCallback onExportRoster;
+  final VoidCallback onCustomizeCopyFormat;
   final VoidCallback onSyncSchedule;
 
   @override
@@ -353,6 +355,18 @@ class _SettingsPage extends StatelessWidget {
                   onTap: hasPeople ? onExportRoster : null,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _SettingsSectionLabel('复制'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('自定义复制格式'),
+              subtitle: const Text('编辑考勤汇总的内容和变量'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onCustomizeCopyFormat,
             ),
           ),
           const SizedBox(height: 22),
@@ -1120,68 +1134,38 @@ class _RollCallPageState extends State<RollCallPage>
         : '已同步：${schedule.name} · ${_formatCompactDateTime(syncedAt)}';
   }
 
+  Future<void> _saveWakeUpAuthToken(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_wakeUpAuthTokenKey, value);
+  }
+
   Future<void> _syncWakeUpSchedule() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final credentials = await showDialog<WakeUpScheduleCredentials>(
-      context: context,
-      builder: (context) => WakeUpScheduleDialog(
-        initialAuthToken: prefs.getString(_wakeUpAuthTokenKey) ?? '',
-        currentScheduleLabel: _wakeUpScheduleLabel,
+    final result = await Navigator.of(context).push<WakeUpSchedulePageResult>(
+      MaterialPageRoute(
+        builder: (_) => WakeUpSchedulePage(
+          initialAuthToken: prefs.getString(_wakeUpAuthTokenKey) ?? '',
+          currentScheduleLabel: _wakeUpScheduleLabel,
+          service: _wakeUpScheduleService,
+          onAuthTokenSaved: _saveWakeUpAuthToken,
+        ),
       ),
     );
-    if (credentials == null) return;
+    if (result == null) return;
 
-    await prefs.setString(_wakeUpAuthTokenKey, credentials.authToken);
-    _toast('正在同步课程表…');
-    try {
-      final shareData = await _wakeUpScheduleService.fetchShareData(
-        authToken: credentials.authToken,
-        shareCode: credentials.shareCode,
-      );
-      final schedule = WakeUpSchedule.parse(shareData);
-      final syncedAt = DateTime.now();
-      await Future.wait([
-        prefs.setString(_wakeUpScheduleDataKey, shareData),
-        prefs.setString(_wakeUpScheduleSyncedAtKey, syncedAt.toIso8601String()),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _wakeUpSchedule = schedule;
-        _wakeUpScheduleSyncedAt = syncedAt;
-      });
-      _toast('课程表已同步：${schedule.name}');
-    } on WakeUpScheduleException catch (error) {
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('课程表同步失败'),
-          content: Text(error.message),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('知道了'),
-            ),
-          ],
-        ),
-      );
-    } on FormatException {
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('课程表同步失败'),
-          content: const Text('课程表数据不完整或格式不受支持。'),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('知道了'),
-            ),
-          ],
-        ),
-      );
-    }
+    final syncedAt = DateTime.now();
+    await Future.wait([
+      prefs.setString(_wakeUpAuthTokenKey, result.authToken),
+      prefs.setString(_wakeUpScheduleDataKey, result.shareData),
+      prefs.setString(_wakeUpScheduleSyncedAtKey, syncedAt.toIso8601String()),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _wakeUpSchedule = result.schedule;
+      _wakeUpScheduleSyncedAt = syncedAt;
+    });
+    _toast('课程表已同步：${result.schedule.name}');
   }
 
   List<String> _currentCourseSummary(DateTime now) {
@@ -1235,14 +1219,15 @@ class _RollCallPageState extends State<RollCallPage>
     };
   }
 
-  Future<void> _showCopyFormatDialog() async {
-    final result = await showDialog<CopyFormatDialogResult>(
-      context: context,
-      builder: (context) => CopyFormatDialog(
-        initialTemplate:
-            _attendanceCopyTemplate ?? AttendanceCopyTemplate.suggested,
-        previewValues: _copyTemplateValues(DateTime.now()),
-        usesCustomTemplate: _attendanceCopyTemplate != null,
+  Future<void> _openCopyFormatPage() async {
+    final result = await Navigator.of(context).push<CopyFormatPageResult>(
+      MaterialPageRoute(
+        builder: (_) => CopyFormatPage(
+          initialTemplate:
+              _attendanceCopyTemplate ?? AttendanceCopyTemplate.suggested,
+          previewValues: _copyTemplateValues(DateTime.now()),
+          usesCustomTemplate: _attendanceCopyTemplate != null,
+        ),
       ),
     );
     if (result == null) return;
@@ -1429,6 +1414,7 @@ class _RollCallPageState extends State<RollCallPage>
           scheduleName: _wakeUpSchedule?.name,
           onImportRoster: _openImportPage,
           onExportRoster: _exportRoster,
+          onCustomizeCopyFormat: _openCopyFormatPage,
           onSyncSchedule: _syncWakeUpSchedule,
         ),
       ),
@@ -1568,17 +1554,10 @@ class _RollCallPageState extends State<RollCallPage>
               icon: const Icon(Icons.person_add_alt_1_rounded),
             ),
           if (!_topSearchMode)
-            Tooltip(
-              message: '复制考勤情况',
-              triggerMode: TooltipTriggerMode.manual,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: _showCopyFormatDialog,
-                child: IconButton(
-                  onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
-                  icon: const Icon(Icons.content_copy_rounded),
-                ),
-              ),
+            IconButton(
+              tooltip: '复制考勤情况',
+              onPressed: _people.isEmpty ? null : _copyAttendanceSummary,
+              icon: const Icon(Icons.content_copy_rounded),
             ),
           if (!_topSearchMode)
             IconButton(

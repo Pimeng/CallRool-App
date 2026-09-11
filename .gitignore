@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local Android release-signing material
+/*.p12
+/*.pk8
+/*.x509.pem

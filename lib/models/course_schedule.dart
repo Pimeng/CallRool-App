@@ -25,6 +25,25 @@ class CurrentCourse {
   }
 }
 
+class ScheduledCourse {
+  const ScheduledCourse({
+    required this.name,
+    required this.teacher,
+    required this.room,
+    required this.startAt,
+    required this.endAt,
+  });
+
+  final String name;
+  final String teacher;
+  final String room;
+  final DateTime startAt;
+  final DateTime endAt;
+
+  String get startTime => _formatTime(startAt);
+  String get endTime => _formatTime(endAt);
+}
+
 class WakeUpSchedule {
   const WakeUpSchedule._({
     required this.name,
@@ -157,6 +176,85 @@ class WakeUpSchedule {
     }
     return matches;
   }
+
+  List<ScheduledCourse> upcomingCoursesAt(DateTime dateTime, {int limit = 2}) {
+    if (limit <= 0) return const [];
+    final semesterStart = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    final lastDay = maxWeek > 0
+        ? semesterStart.add(Duration(days: maxWeek * 7 - 1))
+        : DateTime(dateTime.year + 1, dateTime.month, dateTime.day);
+    var date = DateTime(dateTime.year, dateTime.month, dateTime.day);
+    if (date.isBefore(semesterStart)) date = semesterStart;
+
+    final upcoming = <ScheduledCourse>[];
+    while (!date.isAfter(lastDay)) {
+      final daysSinceStart = date.difference(semesterStart).inDays;
+      final week = daysSinceStart ~/ 7 + 1;
+      for (final arrangement in _arrangements) {
+        if (arrangement.day != date.weekday ||
+            week < arrangement.startWeek ||
+            week > arrangement.endWeek ||
+            !_matchesWeekType(arrangement.type, week)) {
+          continue;
+        }
+        final course = _courses[_key(arrangement.tableId, arrangement.id)];
+        if (course == null) continue;
+        final times = _resolveTimes(arrangement);
+        if (times == null) continue;
+        final startAt = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          times.$1 ~/ 60,
+          times.$1 % 60,
+        );
+        if (!startAt.isAfter(dateTime)) continue;
+        var endAt = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          times.$2 ~/ 60,
+          times.$2 % 60,
+        );
+        if (endAt.isBefore(startAt)) {
+          endAt = endAt.add(const Duration(days: 1));
+        }
+        upcoming.add(
+          ScheduledCourse(
+            name: course.name,
+            teacher: arrangement.teacher,
+            room: arrangement.room,
+            startAt: startAt,
+            endAt: endAt,
+          ),
+        );
+      }
+      upcoming.sort((a, b) => a.startAt.compareTo(b.startAt));
+      if (upcoming.length >= limit) return upcoming.take(limit).toList();
+      date = date.add(const Duration(days: 1));
+    }
+    return upcoming;
+  }
+
+  (int, int)? _resolveTimes(_Arrangement arrangement) {
+    final startTime = arrangement.ownTime
+        ? arrangement.startTime
+        : _timeSlots[_key(arrangement.tableId, arrangement.startNode)]
+                  ?.startTime ??
+              '';
+    final endNode = arrangement.startNode + arrangement.step - 1;
+    final endTime = arrangement.ownTime
+        ? arrangement.endTime
+        : _timeSlots[_key(arrangement.tableId, endNode)]?.endTime ?? '';
+    final startMinute = _parseTime(startTime);
+    final endMinute = _parseTime(endTime);
+    if (startMinute == null || endMinute == null) return null;
+    return (startMinute, endMinute);
+  }
 }
 
 class _TimeSlot {
@@ -271,6 +369,10 @@ int? _parseTime(String value) {
   if (hour == null || minute == null || hour > 23 || minute > 59) return null;
   return hour * 60 + minute;
 }
+
+String _formatTime(DateTime value) =>
+    '${value.hour.toString().padLeft(2, '0')}:'
+    '${value.minute.toString().padLeft(2, '0')}';
 
 bool _matchesWeekType(int type, int week) => switch (type) {
   1 => week.isOdd,

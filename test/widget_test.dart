@@ -23,6 +23,13 @@ Future<void> _pumpApp(
   await tester.pumpAndSettle();
 }
 
+Future<void> _openCopyFormatEditor(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('设置'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('自定义复制格式'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpDarkApp(WidgetTester tester) async {
   tester.binding.platformDispatcher.platformBrightnessTestValue =
       Brightness.dark;
@@ -191,13 +198,12 @@ void main() {
     expect(find.text('继续复制'), findsOneWidget);
   });
 
-  testWidgets('长按复制按钮打开自定义格式编辑器', (tester) async {
+  testWidgets('从设置页打开自定义格式编辑器', (tester) async {
     await _pumpApp(tester);
 
-    await tester.longPress(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _openCopyFormatEditor(tester);
 
-    expect(find.text('自定义复制格式'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '自定义复制格式'), findsOneWidget);
     for (final variable in [
       '课程',
       '老师',
@@ -221,8 +227,7 @@ void main() {
 
   testWidgets('复制格式变量可以拖入编辑框', (tester) async {
     await _pumpApp(tester);
-    await tester.longPress(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _openCopyFormatEditor(tester);
 
     final editorFinder = find.byKey(const ValueKey('copy-format-editor'));
     final editor = tester.widget<TextField>(editorFinder);
@@ -241,8 +246,7 @@ void main() {
 
   testWidgets('复制格式变量插入到实际拖拽落点', (tester) async {
     await _pumpApp(tester);
-    await tester.longPress(find.byTooltip('复制考勤情况'));
-    await tester.pumpAndSettle();
+    await _openCopyFormatEditor(tester);
 
     final editorFinder = find.byKey(const ValueKey('copy-format-editor'));
     final editor = tester.widget<TextField>(editorFinder);
@@ -335,9 +339,11 @@ void main() {
 
     expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
     expect(find.text('名单'), findsOneWidget);
+    expect(find.text('复制'), findsOneWidget);
     expect(find.text('课程表'), findsOneWidget);
     expect(find.text('导入名单'), findsOneWidget);
     expect(find.text('导出名单'), findsOneWidget);
+    expect(find.text('自定义复制格式'), findsOneWidget);
     expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
     expect(find.text('复制考勤情况'), findsNothing);
     expect(find.text('未点名全部标记为旷课'), findsNothing);
@@ -376,27 +382,31 @@ void main() {
   });
 
   testWidgets('课程表同步支持粘贴 WakeUp 完整分享口令', (tester) async {
-    await _pumpApp(tester);
+    await _pumpApp(
+      tester,
+      initialValues: const {'wakeup_auth_token_v1': 'saved-token'},
+    );
 
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('同步 WakeUp 课程表'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.text('同步 WakeUp 课程表'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(AppBar, '同步 WakeUp 课程表'), findsOneWidget);
+    expect(find.byTooltip('设置 authToken'), findsOneWidget);
+    expect(find.text('可直接粘贴完整分享口令，不会保存'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '预览课程'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('设置 authToken'));
+    await tester.pumpAndSettle();
     expect(find.text('authToken'), findsOneWidget);
-    expect(find.text('shareCode'), findsOneWidget);
-    expect(find.text('可直接粘贴 WakeUp 分享口令，不会保存'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
 
     final shareCodeField = find.byWidgetPredicate(
       (widget) =>
-          widget is TextField && widget.decoration?.labelText == 'shareCode',
+          widget is TextField &&
+          widget.decoration?.labelText == 'shareCode 或 WakeUp 分享口令',
     );
     const message =
         '这是来自「WakeUp课程表」的课表分享，分享口令为「ffffbf0619574371bd27364855407d8f」';

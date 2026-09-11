@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../models/attendance_copy_template.dart';
 
-class CopyFormatDialogResult {
-  const CopyFormatDialogResult.save(this.template) : reset = false;
-  const CopyFormatDialogResult.reset() : template = null, reset = true;
+class CopyFormatPageResult {
+  const CopyFormatPageResult.save(this.template) : reset = false;
+  const CopyFormatPageResult.reset() : template = null, reset = true;
 
   final String? template;
   final bool reset;
 }
 
-class CopyFormatDialog extends StatefulWidget {
-  const CopyFormatDialog({
+class CopyFormatPage extends StatefulWidget {
+  const CopyFormatPage({
     super.key,
     required this.initialTemplate,
     required this.previewValues,
@@ -23,10 +23,10 @@ class CopyFormatDialog extends StatefulWidget {
   final bool usesCustomTemplate;
 
   @override
-  State<CopyFormatDialog> createState() => _CopyFormatDialogState();
+  State<CopyFormatPage> createState() => _CopyFormatPageState();
 }
 
-class _CopyFormatDialogState extends State<CopyFormatDialog> {
+class _CopyFormatPageState extends State<CopyFormatPage> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
   final _editorKey = GlobalKey();
@@ -98,119 +98,148 @@ class _CopyFormatDialogState extends State<CopyFormatDialog> {
       _controller.text,
       widget.previewValues,
     );
-    return AlertDialog(
-      title: const Text('自定义复制格式'),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '点击变量可插入光标位置，也可拖到编辑框中的指定位置。',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+    return Scaffold(
+      appBar: AppBar(title: const Text('自定义复制格式')),
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final variable in AttendanceCopyTemplate.variables)
-                    Draggable<String>(
-                      data: variable.token,
-                      dragAnchorStrategy: pointerDragAnchorStrategy,
-                      feedback: Material(
-                        color: Colors.transparent,
-                        child: Chip(label: Text(variable.name)),
-                      ),
-                      childWhenDragging: Opacity(
-                        opacity: .45,
-                        child: ActionChip(
-                          label: Text(variable.name),
-                          onPressed: () => _insertVariable(variable.token),
+                  Text(
+                    '点击变量可插入光标位置，也可拖到编辑框中的指定位置。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final variable in AttendanceCopyTemplate.variables)
+                        Draggable<String>(
+                          data: variable.token,
+                          dragAnchorStrategy: pointerDragAnchorStrategy,
+                          feedback: Material(
+                            color: Colors.transparent,
+                            child: Chip(label: Text(variable.name)),
+                          ),
+                          childWhenDragging: Opacity(
+                            opacity: .45,
+                            child: ActionChip(
+                              label: Text(variable.name),
+                              onPressed: () => _insertVariable(variable.token),
+                            ),
+                          ),
+                          child: Tooltip(
+                            message: variable.description,
+                            child: ActionChip(
+                              label: Text(variable.name),
+                              onPressed: () => _insertVariable(variable.token),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Tooltip(
-                        message: variable.description,
-                        child: ActionChip(
-                          label: Text(variable.name),
-                          onPressed: () => _insertVariable(variable.token),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  DragTarget<String>(
+                    onAcceptWithDetails: _insertVariableAtDrop,
+                    builder: (context, candidateData, rejectedData) =>
+                        AnimatedContainer(
+                          key: _editorKey,
+                          duration: const Duration(milliseconds: 160),
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              width: candidateData.isEmpty ? 0 : 2,
+                              color: candidateData.isEmpty
+                                  ? Colors.transparent
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          child: TextField(
+                            key: const ValueKey('copy-format-editor'),
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            minLines: 8,
+                            maxLines: 14,
+                            decoration: const InputDecoration(
+                              labelText: '复制格式',
+                              alignLabelWithHint: true,
+                            ),
+                          ),
                         ),
-                      ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('预览', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    child: SelectableText(
+                      preview.isEmpty ? '复制内容不能为空' : preview,
+                      key: const ValueKey('copy-format-preview'),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 14),
-              DragTarget<String>(
-                onAcceptWithDetails: _insertVariableAtDrop,
-                builder: (context, candidateData, rejectedData) =>
-                    AnimatedContainer(
-                      key: _editorKey,
-                      duration: const Duration(milliseconds: 160),
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          width: candidateData.isEmpty ? 0 : 2,
-                          color: candidateData.isEmpty
-                              ? Colors.transparent
-                              : Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      child: TextField(
-                        key: const ValueKey('copy-format-editor'),
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        minLines: 6,
-                        maxLines: 10,
-                        decoration: const InputDecoration(
-                          labelText: '复制格式',
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                    ),
-              ),
-              const SizedBox(height: 14),
-              Text('预览', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SelectableText(
-                  preview.isEmpty ? '复制内容不能为空' : preview,
-                  key: const ValueKey('copy-format-preview'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-      actions: [
-        if (widget.usesCustomTemplate)
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(context, const CopyFormatDialogResult.reset()),
-            child: const Text('恢复默认'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _controller.text.trim().isEmpty
-              ? null
-              : () => Navigator.pop(
-                  context,
-                  CopyFormatDialogResult.save(_controller.text),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
                 ),
-          child: const Text('保存'),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Row(
+              children: [
+                if (widget.usesCustomTemplate) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(
+                        context,
+                        const CopyFormatPageResult.reset(),
+                      ),
+                      child: const Text('恢复默认'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _controller.text.trim().isEmpty
+                        ? null
+                        : () => Navigator.pop(
+                            context,
+                            CopyFormatPageResult.save(_controller.text),
+                          ),
+                    child: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ],
+      ),
     );
   }
 }
