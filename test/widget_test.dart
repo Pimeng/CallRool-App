@@ -144,6 +144,29 @@ void main() {
     expect(find.text('刘一'), findsOneWidget);
   });
 
+  testWidgets('筛选中点名后显示姓名并可撤销', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.widgetWithText(FilterChip, '未点名'));
+    await tester.pumpAndSettle();
+
+    final liuYiRow = find.ancestor(
+      of: find.text('刘一'),
+      matching: find.byType(PersonRow),
+    );
+    await tester.tap(
+      find.descendant(of: liuYiRow, matching: find.byTooltip('正常')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('刘一'), findsNothing);
+    expect(find.text('已将 刘一 标记为正常'), findsOneWidget);
+
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(find.text('刘一'), findsOneWidget);
+  });
+
   testWidgets('筛选变化会取消筛选外人员的批量选择', (tester) async {
     await _pumpApp(tester);
 
@@ -304,6 +327,27 @@ void main() {
     expect(copiedText, '刘一、陈二|2|张三|1|李四|1|王五|1');
   });
 
+  testWidgets('设置入口打开独立二级页面', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
+    expect(find.text('名单'), findsOneWidget);
+    expect(find.text('课程表'), findsOneWidget);
+    expect(find.text('导入名单'), findsOneWidget);
+    expect(find.text('导出名单'), findsOneWidget);
+    expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
+    expect(find.text('复制考勤情况'), findsNothing);
+    expect(find.text('未点名全部标记为旷课'), findsNothing);
+    expect(find.text('重置考勤'), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('快捷考勤喵'), findsOneWidget);
+  });
+
   testWidgets('复制考勤时写入当前课程', (tester) async {
     String? copiedText;
     final messenger = tester.binding.defaultBinaryMessenger;
@@ -334,12 +378,18 @@ void main() {
   testWidgets('课程表同步支持粘贴 WakeUp 完整分享口令', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('名单操作'));
+    await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('同步 WakeUp 课程表'));
     await tester.pumpAndSettle();
 
-    expect(find.text('同步 WakeUp 课程表'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('同步 WakeUp 课程表'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('authToken'), findsOneWidget);
     expect(find.text('shareCode'), findsOneWidget);
     expect(find.text('可直接粘贴 WakeUp 分享口令，不会保存'), findsOneWidget);
@@ -361,10 +411,13 @@ void main() {
   testWidgets('首次导入以替换为主操作且不二次确认', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.byTooltip('名单操作'));
+    await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '导入名单'), findsOneWidget);
+    expect(find.byTooltip('选择 TXT 文件'), findsOneWidget);
+    expect(find.text('选择 TXT 文件'), findsNothing);
     await tester.enterText(find.byType(TextField).last, '新同学');
     await tester.pumpAndSettle();
 
@@ -373,6 +426,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '替换现有'));
     await tester.pumpAndSettle();
     expect(find.text('确认替换现有名单？'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     expect(find.text('新同学'), findsOneWidget);
     expect(find.text('刘一'), findsNothing);
 
@@ -390,7 +445,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.byTooltip('名单操作'));
+    await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
@@ -403,6 +458,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('确认替换现有名单？'), findsOneWidget);
+    await tester.tap(find.text('返回修改'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '导入名单'), findsOneWidget);
+    final importField = tester.widget<TextField>(find.byType(TextField).last);
+    expect(importField.controller!.text, '新同学');
+  });
+
+  testWidgets('追加名单时输入控制器保持到页面退出完成', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入名单'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '新同学');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(OutlinedButton, '追加'));
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+
+    final saved = await SharedPreferences.getInstance().then(
+      (prefs) => prefs.getString('roll_call_people_v1'),
+    );
+    expect(saved, contains('新同学'));
   });
 
   testWidgets('删除确认展示当前选中的完整名单', (tester) async {
@@ -424,7 +505,7 @@ void main() {
   testWidgets('添加人员时可以选择初始考勤状态', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.widgetWithText(FloatingActionButton, '添加'));
+    await tester.tap(find.byTooltip('添加人员'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '王小明');
     await tester.tap(find.byType(DropdownButtonFormField<AttendanceStatus>));
@@ -432,6 +513,8 @@ void main() {
     await tester.tap(find.text('旷课').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '添加'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
     await tester.pumpAndSettle();
 
     final saved = await SharedPreferences.getInstance().then(

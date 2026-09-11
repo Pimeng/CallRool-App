@@ -46,6 +46,351 @@ class _VisiblePerson {
   final int number;
 }
 
+class _AddPersonDialog extends StatefulWidget {
+  const _AddPersonDialog();
+
+  @override
+  State<_AddPersonDialog> createState() => _AddPersonDialogState();
+}
+
+class _AddPersonDialogState extends State<_AddPersonDialog> {
+  final _controller = TextEditingController();
+  AttendanceStatus _selectedStatus = AttendanceStatus.unmarked;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(context, (name, _selectedStatus));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('添加人员'),
+    content: SizedBox(
+      width: 360,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: '姓名'),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<AttendanceStatus>(
+            initialValue: _selectedStatus,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: '当前考勤状态'),
+            items: [
+              for (final status in AttendanceStatus.values)
+                DropdownMenuItem(
+                  value: status,
+                  child: Row(
+                    children: [
+                      Icon(status.icon, size: 19, color: status.color),
+                      const SizedBox(width: 10),
+                      Text(status.label),
+                    ],
+                  ),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _selectedStatus = value);
+            },
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: _controller.text.trim().isEmpty ? null : _submit,
+        child: const Text('添加'),
+      ),
+    ],
+  );
+}
+
+typedef _ImportRosterResult = ({List<String> names, bool replace});
+
+class _ImportRosterPage extends StatefulWidget {
+  const _ImportRosterPage({
+    required this.existingCount,
+    required this.isFirstImport,
+  });
+
+  final int existingCount;
+  final bool isFirstImport;
+
+  @override
+  State<_ImportRosterPage> createState() => _ImportRosterPageState();
+}
+
+class _ImportRosterPageState extends State<_ImportRosterPage> {
+  final _controller = TextEditingController();
+  List<String> _names = [];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<String> _parseNames(String text) {
+    final seen = <String>{};
+    return const LineSplitter()
+        .convert(text.replaceAll('\r', ''))
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty && seen.add(name.toLowerCase()))
+        .toList();
+  }
+
+  Future<void> _pickFile() async {
+    final picked = await FilePicker.pickFile(
+      dialogTitle: '选择名单文件',
+      type: FileType.custom,
+      allowedExtensions: const ['txt'],
+    );
+    if (picked == null || !mounted) return;
+    final value = utf8.decode(await picked.readAsBytes(), allowMalformed: true);
+    if (!mounted) return;
+    _controller.text = value;
+    setState(() => _names = _parseNames(value));
+  }
+
+  void _finish({required bool replace}) {
+    Navigator.pop(context, (
+      names: List<String>.unmodifiable(_names),
+      replace: replace,
+    ));
+  }
+
+  Future<void> _replace() async {
+    if (widget.isFirstImport) {
+      _finish(replace: true);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认替换现有名单？'),
+        content: Text(
+          '现有 ${widget.existingCount} 人及其考勤状态将被删除，并替换为 ${_names.length} 人。此操作无法撤销。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回修改'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认替换'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) _finish(replace: true);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('导入名单'),
+      actions: [
+        IconButton(
+          tooltip: '选择 TXT 文件',
+          onPressed: _pickFile,
+          icon: const Icon(Icons.upload_file_rounded),
+        ),
+        const SizedBox(width: 4),
+      ],
+    ),
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(child: Text('一行一个名字，自动忽略空行和重复姓名。')),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${_names.length} 人',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    expands: true,
+                    minLines: null,
+                    maxLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      hintText: '张三\n李四\n王五',
+                      alignLabelWithHint: true,
+                    ),
+                    onChanged: (value) =>
+                        setState(() => _names = _parseNames(value)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+    bottomNavigationBar: SafeArea(
+      top: false,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: widget.isFirstImport
+                    ? OutlinedButton(
+                        onPressed: _names.isEmpty
+                            ? null
+                            : () => _finish(replace: false),
+                        child: const Text('追加'),
+                      )
+                    : OutlinedButton(
+                        onPressed: _names.isEmpty ? null : _replace,
+                        child: const Text('替换现有'),
+                      ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: widget.isFirstImport
+                    ? FilledButton(
+                        onPressed: _names.isEmpty ? null : _replace,
+                        child: const Text('替换现有'),
+                      )
+                    : FilledButton(
+                        onPressed: _names.isEmpty
+                            ? null
+                            : () => _finish(replace: false),
+                        child: const Text('追加'),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SettingsPage extends StatelessWidget {
+  const _SettingsPage({
+    required this.hasPeople,
+    required this.scheduleName,
+    required this.onImportRoster,
+    required this.onExportRoster,
+    required this.onSyncSchedule,
+  });
+
+  final bool hasPeople;
+  final String? scheduleName;
+  final VoidCallback onImportRoster;
+  final VoidCallback onExportRoster;
+  final VoidCallback onSyncSchedule;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('设置')),
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          const _SettingsSectionLabel('名单'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.upload_file_rounded),
+                  title: const Text('导入名单'),
+                  subtitle: const Text('从文本或 TXT 文件追加、替换名单'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: onImportRoster,
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  enabled: hasPeople,
+                  leading: const Icon(Icons.download_rounded),
+                  title: const Text('导出名单'),
+                  subtitle: const Text('将当前名单保存为 TXT 文件'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: hasPeople ? onExportRoster : null,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _SettingsSectionLabel('课程表'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.calendar_month_rounded),
+              title: const Text('同步 WakeUp 课程表'),
+              subtitle: Text(scheduleName ?? '尚未配置'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onSyncSchedule,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
 class _ToolbarSliverDelegate extends SliverPersistentHeaderDelegate {
   const _ToolbarSliverDelegate({required this.child, required this.height});
 
@@ -286,9 +631,8 @@ class _RollCallPageState extends State<RollCallPage>
   bool _handleInnerScroll(ScrollNotification notification) {
     if (notification.metrics.axis == Axis.vertical) {
       _innerScrollOffset = notification.metrics.pixels;
-      _innerScrollPosition = Scrollable.maybeOf(
-        notification.context!,
-      )?.position;
+      _innerScrollPosition = Scrollable.maybeOf(notification.context!)
+          ?.position;
       if (_keepOverviewHidden && _innerScrollOffset <= 1 && mounted) {
         setState(() {
           _keepOverviewHidden = false;
@@ -495,15 +839,6 @@ class _RollCallPageState extends State<RollCallPage>
     return '${value.year}-${twoDigits(value.month)}-${twoDigits(value.day)} $time';
   }
 
-  List<String> _parseNames(String text) {
-    final seen = <String>{};
-    return const LineSplitter()
-        .convert(text.replaceAll('\r', ''))
-        .map((name) => name.trim())
-        .where((name) => name.isNotEmpty && seen.add(name.toLowerCase()))
-        .toList();
-  }
-
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -513,7 +848,44 @@ class _RollCallPageState extends State<RollCallPage>
       );
   }
 
+  bool _matchesFilter(AttendanceStatus status) => switch (_filter) {
+    RosterFilter.all => true,
+    RosterFilter.unmarked => status == AttendanceStatus.unmarked,
+    RosterFilter.present => status == AttendanceStatus.present,
+    RosterFilter.issue => isAttendanceIssueStatus(status),
+    RosterFilter.leave => isLeaveStatus(status),
+  };
+
+  void _showFilteredAttendanceFeedback(
+    Person person,
+    AttendanceStatus previousStatus,
+  ) {
+    if (!mounted || _filter == RosterFilter.all) return;
+
+    final currentStatus = person.status;
+    if (_matchesFilter(currentStatus)) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('已将 ${person.name} 标记为${currentStatus.label}'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () {
+              if (!mounted) return;
+              _invalidatePeopleCache();
+              setState(() => person.status = previousStatus);
+              _save();
+            },
+          ),
+        ),
+      );
+  }
+
   void _setStatus(Person person, AttendanceStatus status) {
+    final previousStatus = person.status;
     _invalidatePeopleCache();
     setState(
       () => person.status = person.status == status
@@ -521,6 +893,7 @@ class _RollCallPageState extends State<RollCallPage>
           : status,
     );
     _save();
+    _showFilteredAttendanceFeedback(person, previousStatus);
   }
 
   void _toggleSelection(Person person) {
@@ -688,162 +1061,26 @@ class _RollCallPageState extends State<RollCallPage>
     _toast('已将 $unmarkedCount 人标记为旷课');
   }
 
-  Future<void> _showImportDialog() async {
-    final controller = TextEditingController();
-    var names = <String>[];
-    String? action;
-    final isFirstImport = !_hasImportedRoster;
-    while (true) {
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-      final importRoute = DialogRoute<String>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 24,
-            ),
-            title: const Text('导入名单'),
-            content: SizedBox(
-              width: 500,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('一行一个名字，自动忽略空行和重复姓名。'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    minLines: 7,
-                    maxLines: 9,
-                    decoration: const InputDecoration(hintText: '张三\n李四\n王五'),
-                    onChanged: (value) =>
-                        setDialogState(() => names = _parseNames(value)),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final picked = await FilePicker.pickFile(
-                            dialogTitle: '选择名单文件',
-                            type: FileType.custom,
-                            allowedExtensions: const ['txt'],
-                          );
-                          if (picked == null || !dialogContext.mounted) return;
-                          final text = utf8.decode(
-                            await picked.readAsBytes(),
-                            allowMalformed: true,
-                          );
-                          if (!dialogContext.mounted) return;
-                          controller.text = text;
-                          setDialogState(() => names = _parseNames(text));
-                        },
-                        icon: const Icon(Icons.folder_open_rounded),
-                        label: const Text('选择 TXT'),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${names.length} 人',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('取消'),
-              ),
-              if (isFirstImport) ...[
-                OutlinedButton(
-                  onPressed: names.isEmpty
-                      ? null
-                      : () => Navigator.pop(dialogContext, 'append'),
-                  child: const Text('追加'),
-                ),
-                FilledButton(
-                  onPressed: names.isEmpty
-                      ? null
-                      : () => Navigator.pop(dialogContext, 'replace'),
-                  child: const Text('替换现有'),
-                ),
-              ] else ...[
-                OutlinedButton(
-                  onPressed: names.isEmpty
-                      ? null
-                      : () => Navigator.pop(dialogContext, 'replace'),
-                  child: const Text('替换现有'),
-                ),
-                FilledButton(
-                  onPressed: names.isEmpty
-                      ? null
-                      : () => Navigator.pop(dialogContext, 'append'),
-                  child: const Text('追加'),
-                ),
-              ],
-            ],
-          ),
+  Future<void> _openImportPage() async {
+    final result = await Navigator.of(context).push<_ImportRosterResult>(
+      MaterialPageRoute(
+        builder: (_) => _ImportRosterPage(
+          existingCount: _people.length,
+          isFirstImport: !_hasImportedRoster,
         ),
-      );
-      action = await Navigator.of(context, rootNavigator: true).push(importRoute);
-      // The dialog still uses the controller during its reverse transition.
-      await importRoute.completed;
-      if (action == null || names.isEmpty) {
-        controller.dispose();
-        return;
-      }
-      if (action != 'replace' || isFirstImport) break;
-
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('确认替换现有名单？'),
-          content: Text(
-            '现有 ${_people.length} 人及其考勤状态将被删除，并替换为 ${names.length} 人。此操作无法撤销。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('返回修改'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('确认替换'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed == true) break;
-    }
-    controller.dispose();
-    if (!mounted) return;
+      ),
+    );
+    if (!mounted || result == null || result.names.isEmpty) return;
     _invalidatePeopleCache();
     setState(() {
-      if (action == 'replace') {
+      if (result.replace) {
         _people.clear();
         _selected.clear();
       }
       final existing = _people
           .map((person) => person.name.toLowerCase())
           .toSet();
-      for (final name in names) {
+      for (final name in result.names) {
         if (existing.add(name.toLowerCase())) {
           _people.add(Person(id: _nextId++, name: name));
         }
@@ -1115,78 +1352,11 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Future<void> _addPerson() async {
-    final controller = TextEditingController();
-    var selectedStatus = AttendanceStatus.unmarked;
     final result = await showDialog<(String, AttendanceStatus)>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('添加人员'),
-          content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(labelText: '姓名'),
-                  onChanged: (_) => setDialogState(() {}),
-                  onSubmitted: (value) {
-                    final name = value.trim();
-                    if (name.isNotEmpty) {
-                      Navigator.pop(dialogContext, (name, selectedStatus));
-                    }
-                  },
-                ),
-                const SizedBox(height: 14),
-                DropdownButtonFormField<AttendanceStatus>(
-                  initialValue: selectedStatus,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '当前考勤状态'),
-                  items: [
-                    for (final status in AttendanceStatus.values)
-                      DropdownMenuItem(
-                        value: status,
-                        child: Row(
-                          children: [
-                            Icon(status.icon, size: 19, color: status.color),
-                            const SizedBox(width: 10),
-                            Text(status.label),
-                          ],
-                        ),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => selectedStatus = value);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: controller.text.trim().isEmpty
-                  ? null
-                  : () => Navigator.pop(dialogContext, (
-                      controller.text.trim(),
-                      selectedStatus,
-                    )),
-              child: const Text('添加'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const _AddPersonDialog(),
     );
-    controller.dispose();
-    if (result == null) return;
+    if (!mounted || result == null) return;
     final name = result.$1;
     if (name.isEmpty) return;
     if (_people.any(
@@ -1251,6 +1421,20 @@ class _RollCallPageState extends State<RollCallPage>
     await _save();
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SettingsPage(
+          hasPeople: _people.isNotEmpty,
+          scheduleName: _wakeUpSchedule?.name,
+          onImportRoster: _openImportPage,
+          onExportRoster: _exportRoster,
+          onSyncSchedule: _syncWakeUpSchedule,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 840;
@@ -1313,9 +1497,9 @@ class _RollCallPageState extends State<RollCallPage>
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
                                           ),
                                         ),
                                       ],
@@ -1377,11 +1561,11 @@ class _RollCallPageState extends State<RollCallPage>
               onPressed: _openTopSearch,
               icon: const Icon(Icons.search_rounded),
             ),
-          if (!_topSearchMode)
+          if (!_topSearchMode && !_selectionMode)
             IconButton(
-              tooltip: '重置考勤',
-              onPressed: _people.isEmpty ? null : _resetAttendance,
-              icon: const Icon(Icons.restart_alt_rounded),
+              tooltip: '添加人员',
+              onPressed: _addPerson,
+              icon: const Icon(Icons.person_add_alt_1_rounded),
             ),
           if (!_topSearchMode)
             Tooltip(
@@ -1397,66 +1581,25 @@ class _RollCallPageState extends State<RollCallPage>
               ),
             ),
           if (!_topSearchMode)
-            PopupMenuButton<String>(
-              tooltip: '名单操作',
-              onSelected: (value) {
-                switch (value) {
-                  case 'import':
-                    _showImportDialog();
-                  case 'export':
-                    _exportRoster();
-                  case 'mark_unmarked_truancy':
-                    _markUnmarkedTruancy();
-                  case 'sync_schedule':
-                    _syncWakeUpSchedule();
-                  case 'copy_format':
-                    _showCopyFormatDialog();
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'import',
-                  child: ListTile(
-                    leading: Icon(Icons.upload_file_rounded),
-                    title: Text('导入名单'),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'export',
-                  child: ListTile(
-                    leading: Icon(Icons.download_rounded),
-                    title: Text('导出名单'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'mark_unmarked_truancy',
-                  enabled: _count(AttendanceStatus.unmarked) > 0,
-                  child: const ListTile(
-                    leading: Icon(Icons.assignment_late_outlined),
-                    title: Text('未点名全部标记为旷课'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'sync_schedule',
-                  child: ListTile(
-                    leading: const Icon(Icons.calendar_month_rounded),
-                    title: const Text('同步 WakeUp 课程表'),
-                    subtitle: _wakeUpSchedule == null
-                        ? const Text('尚未配置')
-                        : Text(_wakeUpSchedule!.name),
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'copy_format',
-                  child: ListTile(
-                    leading: Icon(Icons.text_fields_rounded),
-                    title: Text('自定义复制格式'),
-                    subtitle: Text('也可以长按复制按钮打开'),
-                  ),
-                ),
-              ],
+            IconButton(
+              tooltip: '未点名全部标记为旷课',
+              onPressed: _count(AttendanceStatus.unmarked) == 0
+                  ? null
+                  : _markUnmarkedTruancy,
+              icon: const Icon(Icons.assignment_late_outlined),
             ),
-          const SizedBox(width: 4),
+          if (!_topSearchMode)
+            IconButton(
+              tooltip: '重置考勤',
+              onPressed: _people.isEmpty ? null : _resetAttendance,
+              icon: const Icon(Icons.restart_alt_rounded),
+            ),
+          if (!_topSearchMode)
+            IconButton(
+              tooltip: '设置',
+              onPressed: _openSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
         ],
       ),
       body: _loading
@@ -1494,9 +1637,8 @@ class _RollCallPageState extends State<RollCallPage>
                             height: 52,
                             child: SizedBox.expand(
                               child: ColoredBox(
-                                color: Theme.of(
-                                  context,
-                                ).scaffoldBackgroundColor,
+                                color: Theme.of(context)
+                                    .scaffoldBackgroundColor,
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 2,
@@ -1513,13 +1655,6 @@ class _RollCallPageState extends State<RollCallPage>
                   ),
                 ),
               ),
-            ),
-      floatingActionButton: _selectionMode
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _addPerson,
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text('添加'),
             ),
       bottomNavigationBar: _selectionMode ? _buildBatchBar() : null,
     );
@@ -1607,9 +1742,9 @@ class _RollCallPageState extends State<RollCallPage>
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -1732,7 +1867,7 @@ class _RollCallPageState extends State<RollCallPage>
 
   Widget _buildRoster(bool isWide) {
     if (_people.isEmpty) {
-      return EmptyState(onImport: _showImportDialog);
+      return EmptyState(onImport: _openImportPage);
     }
     final visible = _visiblePeople;
     if (visible.isEmpty) {
