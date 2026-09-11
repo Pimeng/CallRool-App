@@ -101,6 +101,54 @@ jobs:
         if: steps.version.outputs.should_release == 'true'
         run: flutter test
 
+      - name: Verify public build without private source
+        if: steps.version.outputs.should_release == 'true'
+        run: flutter build apk --debug
+
+      - name: Validate private build configuration
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        env:
+          QUICK_IMPORT_PRIVATE_TOKEN: ${{ secrets.QUICK_IMPORT_PRIVATE_TOKEN }}
+          SYMBOL_ARCHIVE_TOKEN: ${{ secrets.SYMBOL_ARCHIVE_TOKEN }}
+          SYMBOL_ARCHIVE_PASSWORD: ${{ secrets.SYMBOL_ARCHIVE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in QUICK_IMPORT_PRIVATE_TOKEN SYMBOL_ARCHIVE_TOKEN SYMBOL_ARCHIVE_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required official-build secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Check out private quick-import source
+        if: steps.version.outputs.should_release == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: Pimeng/callrool-app-inner
+          token: ${{ secrets.QUICK_IMPORT_PRIVATE_TOKEN }}
+          path: .official-private
+          persist-credentials: false
+
+      - name: Inject private quick-import backend
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp lib/services/quick_import/backend_binding.dart "$RUNNER_TEMP/public-backend-binding.dart"
+          bash tool/inject_quick_import_backend.sh .official-private
+
+      - name: Verify official backend and compatibility tests
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter analyze
+          flutter test
+          if [[ -d .official-private/test ]]; then
+            flutter test .official-private/test
+          fi
+
       - name: Restore release signing key
         if: steps.version.outputs.should_release == 'true'
         shell: bash
@@ -130,7 +178,9 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --split-per-abi
+        run: >-
+          flutter build apk --release --split-per-abi --obfuscate
+          --split-debug-info="$RUNNER_TEMP/flutter-symbols/split"
 
       - name: Stage split APKs
         if: steps.version.outputs.should_release == 'true'
@@ -151,13 +201,60 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release
+        run: >-
+          flutter build apk --release --obfuscate
+          --split-debug-info="$RUNNER_TEMP/flutter-symbols/universal"
 
       - name: Stage universal APK
         if: steps.version.outputs.should_release == 'true'
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk \
             "release-artifacts/CallRool-${{ steps.version.outputs.version }}-universal.apk"
+
+      - name: Encrypt obfuscation symbols
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        env:
+          SYMBOL_ARCHIVE_PASSWORD: ${{ secrets.SYMBOL_ARCHIVE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/flutter-symbols.tar.gz" flutter-symbols
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in "$RUNNER_TEMP/flutter-symbols.tar.gz" \
+            -out "$RUNNER_TEMP/flutter-symbols-${{ steps.version.outputs.version }}.tar.gz.enc" \
+            -pass env:SYMBOL_ARCHIVE_PASSWORD
+          rm -f "$RUNNER_TEMP/flutter-symbols.tar.gz"
+
+      - name: Retain symbols in private repository
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SYMBOL_ARCHIVE_TOKEN }}
+          SYMBOL_ARCHIVE_REPOSITORY: Pimeng/callrool-app-inner
+        run: |
+          set -euo pipefail
+          if [[ "$(gh api "repos/$SYMBOL_ARCHIVE_REPOSITORY" --jq .private)" != "true" ]]; then
+            echo "::error::SYMBOL_ARCHIVE_REPOSITORY must be private."
+            exit 1
+          fi
+          symbol_tag="flutter-symbols-${{ steps.version.outputs.version }}"
+          symbol_file="$RUNNER_TEMP/$symbol_tag.tar.gz.enc"
+          if ! gh release view "$symbol_tag" --repo "$SYMBOL_ARCHIVE_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$symbol_tag" --repo "$SYMBOL_ARCHIVE_REPOSITORY" \
+              --title "$symbol_tag" --notes "Encrypted Flutter split-debug-info archive."
+          fi
+          gh release upload "$symbol_tag" "$symbol_file" \
+            --repo "$SYMBOL_ARCHIVE_REPOSITORY" --clobber
+
+      - name: Remove injected private source
+        if: always()
+        shell: bash
+        run: |
+          rm -f lib/services/quick_import/local_quick_import_backend.dart
+          if [[ -f "$RUNNER_TEMP/public-backend-binding.dart" ]]; then
+            cp "$RUNNER_TEMP/public-backend-binding.dart" lib/services/quick_import/backend_binding.dart
+          fi
+          rm -rf "$GITHUB_WORKSPACE/.official-private"
 
       - name: Verify APK signing certificates
         if: steps.version.outputs.should_release == 'true'

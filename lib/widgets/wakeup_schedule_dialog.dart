@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/course_schedule.dart';
-import '../services/wakeup_schedule_service.dart';
+import '../services/quick_import/quick_import_backend.dart';
 
 DateTime _currentTime() => DateTime.now();
 
@@ -21,7 +21,7 @@ class WakeUpSchedulePage extends StatefulWidget {
   const WakeUpSchedulePage({
     super.key,
     required this.initialAuthToken,
-    required this.service,
+    required this.backend,
     required this.onAuthTokenSaved,
     this.now = _currentTime,
     this.currentScheduleLabel,
@@ -29,7 +29,7 @@ class WakeUpSchedulePage extends StatefulWidget {
 
   final String initialAuthToken;
   final String? currentScheduleLabel;
-  final WakeUpScheduleService service;
+  final QuickImportBackend backend;
   final Future<void> Function(String value) onAuthTokenSaved;
   final DateTime Function() now;
 
@@ -48,7 +48,7 @@ class _WakeUpSchedulePageState extends State<WakeUpSchedulePage> {
 
   bool get _canPreview =>
       !_loading &&
-      _authToken.isNotEmpty &&
+      (!widget.backend.requiresAuthToken || _authToken.isNotEmpty) &&
       _shareCodeController.text.trim().isNotEmpty;
 
   @override
@@ -103,7 +103,7 @@ class _WakeUpSchedulePageState extends State<WakeUpSchedulePage> {
       _previewShareData = null;
     });
     try {
-      final shareData = await widget.service.fetchShareData(
+      final shareData = await widget.backend.fetchShareData(
         authToken: _authToken,
         shareCode: extractWakeUpShareCode(_shareCodeController.text),
       );
@@ -114,7 +114,7 @@ class _WakeUpSchedulePageState extends State<WakeUpSchedulePage> {
         _previewSchedule = schedule;
         _previewedAt = widget.now();
       });
-    } on WakeUpScheduleException catch (error) {
+    } on QuickImportException catch (error) {
       if (mounted) setState(() => _errorMessage = error.message);
     } on FormatException {
       if (mounted) {
@@ -145,18 +145,20 @@ class _WakeUpSchedulePageState extends State<WakeUpSchedulePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('同步 WakeUp 课程表'),
-        actions: [
-          IconButton(
-            tooltip: '设置 authToken',
-            onPressed: _editAuthToken,
-            icon: Icon(
-              _authToken.isEmpty
-                  ? Icons.settings_outlined
-                  : Icons.settings_rounded,
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
+        actions: widget.backend.requiresAuthToken
+            ? [
+                IconButton(
+                  tooltip: '设置 authToken',
+                  onPressed: _editAuthToken,
+                  icon: Icon(
+                    _authToken.isEmpty
+                        ? Icons.settings_outlined
+                        : Icons.settings_rounded,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ]
+            : null,
       ),
       body: SafeArea(
         child: Align(
@@ -175,14 +177,17 @@ class _WakeUpSchedulePageState extends State<WakeUpSchedulePage> {
                 ],
                 TextField(
                   controller: _shareCodeController,
-                  autofocus: _authToken.isNotEmpty,
+                  autofocus:
+                      !widget.backend.requiresAuthToken ||
+                      _authToken.isNotEmpty,
                   autocorrect: false,
                   minLines: 5,
                   maxLines: 8,
                   decoration: InputDecoration(
                     labelText: 'shareCode 或 WakeUp 分享口令',
                     alignLabelWithHint: true,
-                    helperText: _authToken.isEmpty
+                    helperText:
+                        widget.backend.requiresAuthToken && _authToken.isEmpty
                         ? '请先通过右上角设置 authToken'
                         : '可直接粘贴完整分享口令，不会保存',
                   ),

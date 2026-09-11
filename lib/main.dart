@@ -12,7 +12,7 @@ import 'models/attendance.dart';
 import 'models/attendance_copy_template.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
-import 'services/wakeup_schedule_service.dart';
+import 'services/quick_import/backend_binding.dart';
 import 'theme/app_theme.dart';
 import 'widgets/attendance_widgets.dart';
 import 'widgets/copy_format_dialog.dart';
@@ -517,7 +517,7 @@ class _RollCallPageState extends State<RollCallPage>
   final _topSearchFocusNode = FocusNode();
   final _rosterScrollController = ScrollController();
   final _overviewKey = GlobalKey();
-  final _wakeUpScheduleService = const WakeUpScheduleService();
+  final _quickImportBackend = createQuickImportBackend();
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
@@ -1147,7 +1147,7 @@ class _RollCallPageState extends State<RollCallPage>
         builder: (_) => WakeUpSchedulePage(
           initialAuthToken: prefs.getString(_wakeUpAuthTokenKey) ?? '',
           currentScheduleLabel: _wakeUpScheduleLabel,
-          service: _wakeUpScheduleService,
+          backend: _quickImportBackend,
           onAuthTokenSaved: _saveWakeUpAuthToken,
         ),
       ),

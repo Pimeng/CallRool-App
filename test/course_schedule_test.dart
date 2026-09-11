@@ -101,4 +101,13 @@ void main() {
       ),
     );
   });
+
+  test('兼容 API 直接在 data 中返回分享数据', () {
+    expect(
+      decodeWakeUpShareResponse(
+        '{"success":true,"code":200,"message":"获取成功","data":"share-data"}',
+      ),
+      'share-data',
+    );
+  });
 }

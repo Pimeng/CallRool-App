@@ -21,6 +21,13 @@ class _FakeWakeUpScheduleService extends WakeUpScheduleService {
   }) async => _shareData;
 }
 
+class _FakeLocalQuickImportBackend extends WakeUpScheduleService {
+  const _FakeLocalQuickImportBackend();
+
+  @override
+  bool get requiresAuthToken => false;
+}
+
 Future<void> _pumpPage(WidgetTester tester, DateTime now) async {
   await tester.binding.setSurfaceSize(const Size(800, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -28,7 +35,7 @@ Future<void> _pumpPage(WidgetTester tester, DateTime now) async {
     MaterialApp(
       home: WakeUpSchedulePage(
         initialAuthToken: 'token',
-        service: const _FakeWakeUpScheduleService(),
+        backend: const _FakeWakeUpScheduleService(),
         onAuthTokenSaved: (_) async {},
         now: () => now,
       ),
@@ -62,5 +69,28 @@ void main() {
     expect(find.text('接下来第 2 节'), findsOneWidget);
     expect(find.text('第三节'), findsOneWidget);
     expect(find.text('C303'), findsOneWidget);
+  });
+
+  testWidgets('本地 backend 不要求 authToken', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WakeUpSchedulePage(
+          initialAuthToken: '',
+          backend: const _FakeLocalQuickImportBackend(),
+          onAuthTokenSaved: (_) async {},
+          now: () => DateTime(2026, 9, 2, 9, 30),
+        ),
+      ),
+    );
+
+    expect(find.byTooltip('设置 authToken'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'share-code');
+    await tester.pump();
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '预览课程'),
+    );
+    expect(button.onPressed, isNotNull);
   });
 }

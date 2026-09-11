@@ -51,3 +51,7 @@ app.*.map.json
 /*.p12
 /*.pk8
 /*.x509.pem
+
+/temp/
+/.official-private/
+/private-symbol-output/
