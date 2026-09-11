@@ -60,9 +60,9 @@ if not exist "%SYMBOL_DIR%" mkdir "%SYMBOL_DIR%"
 if errorlevel 1 goto :cleanup
 
 if /i "%BUILD_KIND%"=="appbundle" (
-  call flutter build appbundle --release --obfuscate --split-debug-info="%SYMBOL_DIR%"
+  call flutter build appbundle --release --obfuscate --split-debug-info="%SYMBOL_DIR%" --target-platform android-arm64 --split-per-abi
 ) else (
-  call flutter build apk --release --obfuscate --split-debug-info="%SYMBOL_DIR%"
+  call flutter build apk --release --obfuscate --split-debug-info="%SYMBOL_DIR%" --target-platform android-arm64 --split-per-abi
 )
 if errorlevel 1 goto :cleanup
 
