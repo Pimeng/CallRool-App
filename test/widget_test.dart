@@ -30,6 +30,37 @@ Future<void> _openCopyFormatEditor(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openRandomPicker(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('设置'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(ListTile, '随机点人'));
+  await tester.pumpAndSettle();
+}
+
+/// 等待抽签滚动动画结束。
+///
+/// 抽签过程中有无限循环的进度条，不能直接 pumpAndSettle，需先推进到动画结束。
+Future<void> _finishSpin(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 3000));
+  await tester.pumpAndSettle();
+}
+
+/// 读取滚动过程中当前显示的姓名；不在滚动状态时返回 null。
+String? _rollingName(WidgetTester tester) {
+  final finder = find.byKey(const ValueKey('random-picker-rolling-name'));
+  if (finder.evaluate().isEmpty) return null;
+  return tester.widget<Text>(finder).data;
+}
+
+/// 取结果面板的装饰，用于比较单人与多人抽取是否同一套样式。
+BoxDecoration _resultPanelDecoration(WidgetTester tester) {
+  final container = tester.widget<Container>(
+    find.byKey(const ValueKey('random-picker-result-panel')),
+  );
+  return container.decoration! as BoxDecoration;
+}
+
 Future<void> _pumpDarkApp(WidgetTester tester) async {
   tester.binding.platformDispatcher.platformBrightnessTestValue =
       Brightness.dark;
@@ -340,6 +371,7 @@ void main() {
     expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
     expect(find.text('名单'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
+    expect(find.text('随机点人'), findsNWidgets(2));
     expect(find.text('课程表'), findsOneWidget);
     expect(find.text('导入名单'), findsOneWidget);
     expect(find.text('导出名单'), findsOneWidget);
@@ -593,5 +625,278 @@ void main() {
   testWidgets('320 宽度顶部栏不溢出', (tester) async {
     await _pumpApp(tester, size: const Size(320, 568));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('随机点人只抽取正常到勤人员', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"正常甲","status":"present"},'
+        '{"id":2,"name":"正常乙","status":"present"},'
+        '{"id":3,"name":"公假丙","status":"leave"},'
+        '{"id":4,"name":"旷课丁","status":"truancy"},'
+        '{"id":5,"name":"未点名戊","status":"unmarked"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    expect(find.widgetWithText(AppBar, '随机点人'), findsOneWidget);
+    expect(find.text('正常到勤 2 人，剩余可抽 2 人'), findsOneWidget);
+
+    await tester.tap(find.text('抽取 1 人'));
+    await _finishSpin(tester);
+
+    expect(find.text('恭喜被抽中'), findsOneWidget);
+    final drawn = ['正常甲', '正常乙']
+        .where((name) => find.text(name).evaluate().isNotEmpty)
+        .toList();
+    expect(drawn, hasLength(1));
+    // 非正常状态的人不在候选人里，页面上不会出现。
+    expect(find.text('公假丙'), findsNothing);
+    expect(find.text('旷课丁'), findsNothing);
+    expect(find.text('未点名戊'), findsNothing);
+  });
+
+  testWidgets('抽取过程中姓名持续变化', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"},'
+        '{"id":3,"name":"丙","status":"present"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    await tester.tap(find.text('抽取 1 人'));
+    await tester.pump();
+
+    // 滚动期间逐帧采样，应能看到多个不同姓名依次出现。
+    final seen = <String>{};
+    for (var i = 0; i < 60; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      for (final name in ['甲', '乙', '丙']) {
+        if (find.text(name).evaluate().isNotEmpty) seen.add(name);
+      }
+    }
+    expect(seen.length, greaterThan(1));
+
+    await _finishSpin(tester);
+  });
+
+  testWidgets('抽签动画越到后面换名越慢并停在结果上', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"},'
+        '{"id":3,"name":"丙","status":"present"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    await tester.tap(find.text('抽取 1 人'));
+    await tester.pump();
+
+    // 前 500ms：快速滚动阶段，换名次数很多。
+    var early = 0;
+    String? previous = _rollingName(tester);
+    for (var i = 0; i < 31; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final current = _rollingName(tester);
+      if (current != previous) early += 1;
+      previous = current;
+    }
+
+    // 后 1s：减速阶段，换名次数应明显减少。
+    await tester.pump(const Duration(milliseconds: 1200));
+    var late = 0;
+    previous = _rollingName(tester);
+    for (var i = 0; i < 55; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final current = _rollingName(tester);
+      if (current != previous) late += 1;
+      previous = current;
+    }
+
+    expect(early, greaterThan(10));
+    expect(late, lessThan(early));
+
+    // 末段应停住不动，并且停的就是最终中奖者。
+    final settled = _rollingName(tester);
+    expect(settled, isNotNull);
+
+    await _finishSpin(tester);
+    expect(find.text(settled!), findsOneWidget);
+  });
+
+  testWidgets('抽签前后姓名排版与面板尺寸保持一致', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    await tester.tap(find.text('抽取 1 人'));
+    await tester.pump();
+
+    const rollingKey = ValueKey('random-picker-rolling-name');
+    const resultKey = ValueKey('random-picker-result-name');
+
+    final rollingName = tester.widget<Text>(find.byKey(rollingKey));
+    final rollingPanel = tester.getSize(
+      find.ancestor(of: find.byKey(rollingKey), matching: find.byType(Container))
+          .first,
+    );
+
+    await _finishSpin(tester);
+
+    final resultName = tester.widget<Text>(find.byKey(resultKey));
+    final resultPanel = tester.getSize(
+      find.ancestor(of: find.byKey(resultKey), matching: find.byType(Container))
+          .first,
+    );
+
+    expect(resultName.style?.fontSize, rollingName.style?.fontSize);
+    expect(resultName.style?.fontWeight, rollingName.style?.fontWeight);
+    expect(resultPanel, rollingPanel);
+  });
+
+  testWidgets('单人抽取与多人抽取的结果面板样式一致', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"},'
+        '{"id":3,"name":"丙","status":"present"}]';
+    await _pumpApp(
+      tester,
+      size: const Size(400, 900),
+      initialValues: {'roll_call_people_v1': peopleJson},
+    );
+
+    await _openRandomPicker(tester);
+
+    // 单人抽取。
+    await tester.tap(find.text('抽取 1 人'));
+    await _finishSpin(tester);
+
+    expect(
+      find.byKey(const ValueKey('random-picker-result-panel')),
+      findsOneWidget,
+    );
+    expect(find.text('恭喜被抽中'), findsOneWidget);
+    final single = _resultPanelDecoration(tester);
+
+    // 关掉不重复并改成 3 人，走多人抽取分支。
+    await tester.tap(find.widgetWithText(SwitchListTile, '不重复抽取'));
+    await tester.pump();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.byTooltip('增加人数'));
+      await tester.pump();
+    }
+    expect(find.text('抽取 3 人'), findsOneWidget);
+
+    await tester.tap(find.text('抽取 3 人'));
+    await _finishSpin(tester);
+
+    expect(find.text('抽中 3 人'), findsOneWidget);
+    final batch = _resultPanelDecoration(tester);
+
+    // 两套结果必须长得一样：同一个面板、同样的底色/边框/圆角。
+    expect(batch.color, single.color);
+    expect(batch.border, single.border);
+    expect(batch.borderRadius, single.borderRadius);
+  });
+
+  testWidgets('关闭抽签动画后点击直接显示结果', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"}]';
+    await _pumpApp(
+      tester,
+      size: const Size(400, 900),
+      initialValues: {'roll_call_people_v1': peopleJson},
+    );
+
+    await _openRandomPicker(tester);
+    await tester.tap(find.widgetWithText(SwitchListTile, '播放抽签动画'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('抽取 1 人'));
+    await tester.pumpAndSettle();
+
+    // 没有滚动过程，直接就是结果。
+    expect(
+      find.byKey(const ValueKey('random-picker-rolling-name')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('random-picker-result-name')),
+      findsOneWidget,
+    );
+    expect(find.text('恭喜被抽中'), findsOneWidget);
+    expect(find.text('本轮已抽中 1 人'), findsOneWidget);
+  });
+
+  testWidgets('随机点人支持批量抽取', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"},'
+        '{"id":3,"name":"丙","status":"present"},'
+        '{"id":4,"name":"丁","status":"present"},'
+        '{"id":5,"name":"戊","status":"present"}]';
+    await _pumpApp(
+      tester,
+      size: const Size(400, 900),
+      initialValues: {'roll_call_people_v1': peopleJson},
+    );
+
+    await _openRandomPicker(tester);
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.byTooltip('增加人数'));
+      await tester.pump();
+    }
+    expect(find.text('抽取 5 人'), findsOneWidget);
+
+    await tester.tap(find.text('抽取 5 人'));
+    await _finishSpin(tester);
+
+    expect(find.text('抽中 5 人'), findsOneWidget);
+    for (final name in ['甲', '乙', '丙', '丁', '戊']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    expect(find.text('本轮已抽中 5 人'), findsOneWidget);
+  });
+
+  testWidgets('不重复抽取会排除已抽中的人并支持重置', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    expect(find.text('正常到勤 2 人，剩余可抽 2 人'), findsOneWidget);
+
+    await tester.tap(find.text('抽取 1 人'));
+    await _finishSpin(tester);
+    final first = ['甲', '乙'].firstWhere(
+      (name) => find.text(name).evaluate().isNotEmpty,
+    );
+    expect(find.text('正常到勤 2 人，剩余可抽 1 人'), findsOneWidget);
+
+    await tester.tap(find.text('抽取 1 人'));
+    await _finishSpin(tester);
+    final second = ['甲', '乙'].firstWhere(
+      (name) => find.text(name).evaluate().isNotEmpty,
+    );
+    expect(second, isNot(first));
+    expect(find.text('正常到勤 2 人，剩余可抽 0 人'), findsOneWidget);
+    expect(find.text('已全部抽完'), findsOneWidget);
+
+    await tester.tap(find.text('重置本轮'));
+    await tester.pumpAndSettle();
+    expect(find.text('正常到勤 2 人，剩余可抽 2 人'), findsOneWidget);
+    expect(find.text('本轮已抽中 2 人'), findsNothing);
+  });
+
+  testWidgets('没有正常到勤人员时随机点人显示空状态', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"公假甲","status":"leave"},'
+        '{"id":2,"name":"旷课乙","status":"truancy"}]';
+    await _pumpApp(tester, initialValues: {'roll_call_people_v1': peopleJson});
+
+    await _openRandomPicker(tester);
+    expect(find.text('没有可抽签的人员'), findsOneWidget);
+    expect(find.text('抽取 1 人'), findsNothing);
   });
 }

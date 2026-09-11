@@ -16,6 +16,7 @@ import 'services/quick_import/backend_binding.dart';
 import 'theme/app_theme.dart';
 import 'widgets/attendance_widgets.dart';
 import 'widgets/copy_format_dialog.dart';
+import 'widgets/random_picker_page.dart';
 import 'widgets/wakeup_schedule_dialog.dart';
 
 const _performanceDiagnostics = bool.fromEnvironment(
@@ -317,6 +318,7 @@ class _SettingsPage extends StatelessWidget {
     required this.onExportRoster,
     required this.onCustomizeCopyFormat,
     required this.onSyncSchedule,
+    required this.onRandomPick,
   });
 
   final bool hasPeople;
@@ -325,6 +327,7 @@ class _SettingsPage extends StatelessWidget {
   final VoidCallback onExportRoster;
   final VoidCallback onCustomizeCopyFormat;
   final VoidCallback onSyncSchedule;
+  final VoidCallback onRandomPick;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -367,6 +370,18 @@ class _SettingsPage extends StatelessWidget {
               subtitle: const Text('编辑考勤汇总的内容和变量'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: onCustomizeCopyFormat,
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _SettingsSectionLabel('随机点人'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.casino_rounded),
+              title: const Text('随机点人'),
+              subtitle: const Text('从正常到勤人员中抽签，支持批量与不重复'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onRandomPick,
             ),
           ),
           const SizedBox(height: 22),
@@ -1406,6 +1421,19 @@ class _RollCallPageState extends State<RollCallPage>
     await _save();
   }
 
+  Future<void> _pickRandomPerson() async {
+    // 抽签只针对正常到勤（present）的人员，其他状态一律不参与。
+    final candidates = _people
+        .where((person) => person.status == AttendanceStatus.present)
+        .map((person) => RandomCandidate(id: person.id, name: person.name))
+        .toList(growable: false);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RandomPickerPage(candidates: candidates),
+      ),
+    );
+  }
+
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1416,6 +1444,7 @@ class _RollCallPageState extends State<RollCallPage>
           onExportRoster: _exportRoster,
           onCustomizeCopyFormat: _openCopyFormatPage,
           onSyncSchedule: _syncWakeUpSchedule,
+          onRandomPick: _pickRandomPerson,
         ),
       ),
     );
