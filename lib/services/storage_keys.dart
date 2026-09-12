@@ -30,6 +30,9 @@ abstract final class StorageKeys {
   /// 保存的考勤历史记录。
   static const attendanceHistory = 'attendance_history_v1';
 
+  /// 点击控件的轻微震动反馈是否开启。
+  static const hapticEnabled = 'haptic_enabled_v1';
+
   /// 参与备份 / 还原的键。
   ///
   /// `wakeUpAuthToken` 是账号凭据，刻意排除，避免备份文件被转发后泄露；

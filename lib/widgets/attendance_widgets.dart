@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/attendance.dart';
 import '../models/person.dart';
+import '../services/haptic_service.dart';
 
 class PersonRow extends StatelessWidget {
   const PersonRow({
@@ -428,7 +429,10 @@ class AttendanceExceptionStatusButton extends StatelessWidget {
       },
     );
 
-    if (selected != null) onSelected(selected);
+    if (selected != null) {
+      Haptic.light();
+      onSelected(selected);
+    }
   }
 }
 

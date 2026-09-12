@@ -14,6 +14,7 @@ import 'models/attendance_record.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
 import 'services/attendance_history_store.dart';
+import 'services/haptic_service.dart';
 import 'services/quick_import/backend_binding.dart';
 import 'services/storage_keys.dart';
 import 'theme/app_theme.dart';
@@ -452,6 +453,8 @@ class _SettingsTab extends StatelessWidget {
     required this.hasPeople,
     required this.scheduleName,
     required this.lastModifiedLabel,
+    required this.hapticEnabled,
+    required this.onHapticChanged,
     required this.onEditRoster,
     required this.onImportRoster,
     required this.onExportRoster,
@@ -463,6 +466,8 @@ class _SettingsTab extends StatelessWidget {
   final bool hasPeople;
   final String? scheduleName;
   final String lastModifiedLabel;
+  final bool hapticEnabled;
+  final ValueChanged<bool> onHapticChanged;
   final VoidCallback onEditRoster;
   final VoidCallback onImportRoster;
   final VoidCallback onExportRoster;
@@ -542,6 +547,18 @@ class _SettingsTab extends StatelessWidget {
             subtitle: const Text('导出或恢复名单、考勤记录、扩展字段与课程信息'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: onBackupRestore,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const _SectionLabel('通用'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: SwitchListTile(
+            secondary: const Icon(Icons.vibration_rounded),
+            title: const Text('震动反馈'),
+            subtitle: const Text('点按按钮、切换考勤状态时给出轻微震动'),
+            value: hapticEnabled,
+            onChanged: onHapticChanged,
           ),
         ),
         const SizedBox(height: 26),
@@ -767,11 +784,7 @@ class _HapticDelayedMultiDragGestureRecognizer
   @override
   void acceptGesture(int pointer) {
     super.acceptGesture(pointer);
-    if (!kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS)) {
-      HapticFeedback.selectionClick();
-    }
+    Haptic.selection();
   }
 }
 
@@ -844,6 +857,7 @@ class _RollCallPageState extends State<RollCallPage>
   bool _hasImportedRoster = false;
   bool _selectionMode = false;
   bool _fabOpen = false;
+  bool _hapticEnabled = true;
   int _nextId = 1;
 
   /// 内层名单列表的滚动位置（NestedScrollView 注入）。
@@ -887,6 +901,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _toggleActionMenu() {
+    Haptic.light();
     setState(() {
       _fabOpen = !_fabOpen;
       if (_fabOpen) {
@@ -905,6 +920,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _selectTab(int index) {
+    Haptic.selection();
     final next = _HomeTab.values[index];
     final reselected = next == _tab;
     // 离开考勤页时悬浮菜单会被移除，状态要一并复位，避免下次进来残着展开。
@@ -962,6 +978,8 @@ class _RollCallPageState extends State<RollCallPage>
     _lastModifiedAt = DateTime.tryParse(
       prefs.getString(_lastModifiedStorageKey) ?? '',
     );
+    _hapticEnabled = prefs.getBool(StorageKeys.hapticEnabled) ?? true;
+    Haptic.setEnabled(_hapticEnabled);
     // 先清空再按存储重建，这样「备份还原」后重载不会残留旧数据。
     _wakeUpSchedule = null;
     _wakeUpScheduleSyncedAt = null;
@@ -1058,6 +1076,16 @@ class _RollCallPageState extends State<RollCallPage>
     await AttendanceHistoryStore.save(prefs, _attendanceHistory);
   }
 
+  /// 设置页「震动反馈」开关：立即生效并落盘。
+  Future<void> _setHapticEnabled(bool value) async {
+    setState(() => _hapticEnabled = value);
+    Haptic.setEnabled(value);
+    // 开启时先给一次反馈，让用户马上感知到手感。
+    if (value) Haptic.light();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(StorageKeys.hapticEnabled, value);
+  }
+
   /// 从本地存储重新加载全部数据（备份还原后调用）。
   Future<void> _reloadFromStorage() async {
     if (mounted) setState(() => _loading = true);
@@ -1149,6 +1177,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _setFilter(RosterFilter filter) {
+    Haptic.selection();
     _invalidatePeopleCache();
     setState(() {
       _filter = filter;
@@ -1216,6 +1245,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _setStatus(Person person, AttendanceStatus status) {
+    Haptic.light();
     final previousStatus = person.status;
     _invalidatePeopleCache();
     setState(
@@ -1228,6 +1258,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _toggleSelection(Person person) {
+    Haptic.selection();
     setState(() {
       _selectionMode = true;
       if (!_selected.add(person.id)) _selected.remove(person.id);
@@ -1236,6 +1267,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _toggleSelectionMode() {
+    Haptic.light();
     setState(() {
       if (_selectionMode) {
         _selected.clear();
@@ -1253,6 +1285,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _selectAllVisible() {
+    Haptic.light();
     final ids = _visiblePeople.map((item) => item.person.id).toSet();
     setState(() {
       if (ids.isNotEmpty && ids.every(_selected.contains)) {
@@ -1265,6 +1298,7 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   void _invertSelectionVisible() {
+    Haptic.light();
     final ids = _visiblePeople.map((item) => item.person.id).toSet();
     setState(() {
       for (final id in ids) {
@@ -1305,6 +1339,7 @@ class _RollCallPageState extends State<RollCallPage>
 
   void _batchSetStatus(AttendanceStatus status) {
     if (_selected.isEmpty) return;
+    Haptic.light();
     _invalidatePeopleCache();
     setState(() {
       for (final person in _people.where(
@@ -1714,6 +1749,7 @@ class _RollCallPageState extends State<RollCallPage>
       ),
     );
     if (confirmed != true) return;
+    Haptic.light();
     _invalidatePeopleCache();
     setState(() {
       _people.removeWhere((person) => _selected.contains(person.id));
@@ -1872,6 +1908,8 @@ class _RollCallPageState extends State<RollCallPage>
                   hasPeople: _people.isNotEmpty,
                   scheduleName: _wakeUpSchedule?.name,
                   lastModifiedLabel: _lastModifiedLabel,
+                  hapticEnabled: _hapticEnabled,
+                  onHapticChanged: _setHapticEnabled,
                   onEditRoster: _openRosterEditor,
                   onImportRoster: _openImportPage,
                   onExportRoster: _exportRoster,

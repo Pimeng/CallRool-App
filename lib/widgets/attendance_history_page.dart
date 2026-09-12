@@ -33,8 +33,15 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
     super.dispose();
   }
 
-  void _close() =>
-      Navigator.of(context).pop(_changed ? List.unmodifiable(_records) : null);
+  void _close() {
+    // 必须显式写上类型参数：`List.unmodifiable` 的形参是裸 `Iterable`，
+    // 推导不出元素类型会退化成 `List<dynamic>`，pop 时与本页路由声明的
+    // `List<AttendanceRecord>` 不匹配而抛断言，导致页面无法返回。
+    final result = _changed
+        ? List<AttendanceRecord>.unmodifiable(_records)
+        : null;
+    Navigator.of(context).pop(result);
+  }
 
   List<AttendanceRecord> get _visibleRecords => _filter.apply(_records);
 

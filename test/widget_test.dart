@@ -4,6 +4,7 @@ import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
 import 'package:callrool_app/models/attendance_record.dart';
 import 'package:callrool_app/services/attendance_history_store.dart';
+import 'package:callrool_app/services/storage_keys.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -454,6 +455,45 @@ void main() {
     expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
   });
 
+  testWidgets('设置页震动开关默认开启并可关闭保存', (tester) async {
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpAndSettle();
+
+    final switchTile = find.widgetWithText(SwitchListTile, '震动反馈');
+    expect(switchTile, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(switchTile).value, isTrue);
+
+    await tester.tap(switchTile);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(switchTile).value, isFalse);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(StorageKeys.hapticEnabled), isFalse);
+  });
+
+  testWidgets('震动开关关闭状态会从存储恢复', (tester) async {
+    await _pumpApp(
+      tester,
+      initialValues: {StorageKeys.hapticEnabled: false},
+    );
+
+    await _openTab(tester, '设置');
+    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, '震动反馈'),
+          )
+          .value,
+      isFalse,
+    );
+  });
+
   testWidgets('保存当前考勤记录后可在工具箱考勤记录中查看', (tester) async {
     await _pumpApp(tester);
 
@@ -476,6 +516,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('未点名（10）'), findsOneWidget);
     expect(find.textContaining('刘一'), findsOneWidget);
+  });
+
+  testWidgets('删除最后一条考勤记录后仍能返回工具箱', (tester) async {
+    await _pumpApp(tester);
+
+    await _tapAction(tester, '保存当前考勤记录');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    await _openHistory(tester);
+    await tester.tap(find.byTooltip('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('还没有考勤记录'), findsOneWidget);
+
+    // 回归：删除后 pop 的返回值类型必须与路由声明的 List<AttendanceRecord> 一致，
+    // 否则断言抛异常、页面卡住退不出去。
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '工具箱'), findsOneWidget);
+    expect(find.text('还没有考勤记录'), findsNothing);
   });
 
   testWidgets('编辑名单可设置扩展字段，搜索能命中字段值', (tester) async {
