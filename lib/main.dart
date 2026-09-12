@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -857,6 +858,7 @@ class _RollCallPageState extends State<RollCallPage>
   bool _hasImportedRoster = false;
   bool _selectionMode = false;
   bool _fabOpen = false;
+  bool _navigationBarVisible = true;
   bool _hapticEnabled = true;
   int _nextId = 1;
 
@@ -926,7 +928,10 @@ class _RollCallPageState extends State<RollCallPage>
     // 离开考勤页时悬浮菜单会被移除，状态要一并复位，避免下次进来残着展开。
     _fabOpen = false;
     _fabController.value = 0;
-    setState(() => _tab = next);
+    setState(() {
+      _tab = next;
+      _navigationBarVisible = true;
+    });
     // 已经在考勤页时再点一次「考勤」，回到名单顶部（搜索框也顺带露出来）。
     if (reselected && next == _HomeTab.attendance) _scrollToTop();
   }
@@ -950,6 +955,19 @@ class _RollCallPageState extends State<RollCallPage>
     final context = notification.context;
     if (context != null && notification.metrics.axis == Axis.vertical) {
       _innerScrollPosition = Scrollable.maybeOf(context)?.position;
+    }
+    return false;
+  }
+
+  /// 考勤名单向下浏览时让底部导航暂时退场，反向滚动时立即恢复。
+  bool _handleAttendanceScrollDirection(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical ||
+        notification.direction == ScrollDirection.idle) {
+      return false;
+    }
+    final visible = notification.direction == ScrollDirection.forward;
+    if (visible != _navigationBarVisible) {
+      setState(() => _navigationBarVisible = visible);
     }
     return false;
   }
@@ -1923,27 +1941,76 @@ class _RollCallPageState extends State<RollCallPage>
             : null,
         bottomNavigationBar: _selectionMode
             ? _buildBatchBar()
-            : NavigationBar(
-                selectedIndex: _tab.index,
-                onDestinationSelected: _selectTab,
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.fact_check_outlined),
-                    selectedIcon: Icon(Icons.fact_check_rounded),
-                    label: '考勤',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.widgets_outlined),
-                    selectedIcon: Icon(Icons.widgets_rounded),
-                    label: '工具箱',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings_rounded),
-                    label: '设置',
-                  ),
-                ],
-              ),
+            : _buildBottomNavigationBar(),
+      ),
+    );
+  }
+
+  /// 参考 PiliPlus 的胶囊形悬浮导航：保留 Material 3 的目的地交互，
+  /// 只把外层改为带边距、圆角和轻微阴影的浮动容器。
+  Widget _buildBottomNavigationBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bar = Material(
+      key: const ValueKey('floating-bottom-navigation'),
+      color: colorScheme.surfaceContainer,
+      surfaceTintColor: colorScheme.surfaceTint,
+      elevation: 3,
+      shadowColor: colorScheme.shadow.withValues(alpha: 0.18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(32),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: NavigationBar(
+        height: 64,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        selectedIndex: _tab.index,
+        onDestinationSelected: _selectTab,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.fact_check_outlined),
+            selectedIcon: Icon(Icons.fact_check_rounded),
+            label: '考勤',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.widgets_outlined),
+            selectedIcon: Icon(Icons.widgets_rounded),
+            label: '工具箱',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: '设置',
+          ),
+        ],
+      ),
+    );
+
+    return AnimatedSlide(
+      key: const ValueKey('bottom-navigation-slide'),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+      offset: Offset(
+        0,
+        _tab == _HomeTab.attendance && !_navigationBarVisible ? 1 : 0,
+      ),
+      child: IgnorePointer(
+        ignoring: _tab == _HomeTab.attendance && !_navigationBarVisible,
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: bar,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1958,31 +2025,34 @@ class _RollCallPageState extends State<RollCallPage>
             padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 0),
             // 搜索框放在非固定的 header sliver 里，随手指逐帧滑走；
             // 筛选条固定在顶部，名单在内层滚动（NestedScrollView 会注入内层控制器）。
-            child: NestedScrollView(
-              controller: _rosterScrollController,
-              headerSliverBuilder: (context, bodyIsScrolled) => [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _buildSearchField(),
+            child: NotificationListener<UserScrollNotification>(
+              onNotification: _handleAttendanceScrollDirection,
+              child: NestedScrollView(
+                controller: _rosterScrollController,
+                headerSliverBuilder: (context, bodyIsScrolled) => [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _buildSearchField(),
+                    ),
                   ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _PinnedHeaderDelegate(
-                    height: 52,
-                    child: SizedBox.expand(
-                      child: ColoredBox(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        child: _buildFilterToolbar(isWide),
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _PinnedHeaderDelegate(
+                      height: 52,
+                      child: SizedBox.expand(
+                        child: ColoredBox(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          child: _buildFilterToolbar(isWide),
+                        ),
                       ),
                     ),
                   ),
+                ],
+                body: NotificationListener<ScrollNotification>(
+                  onNotification: _handleInnerScroll,
+                  child: _buildRoster(isWide),
                 ),
-              ],
-              body: NotificationListener<ScrollNotification>(
-                onNotification: _handleInnerScroll,
-                child: _buildRoster(isWide),
               ),
             ),
           ),

@@ -455,6 +455,41 @@ void main() {
     expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
   });
 
+  testWidgets('底部导航使用圆角悬浮样式', (tester) async {
+    await _pumpApp(tester, size: const Size(430, 760));
+
+    final material = tester.widget<Material>(
+      find.byKey(const ValueKey('floating-bottom-navigation')),
+    );
+    final shape = material.shape! as RoundedRectangleBorder;
+    final borderRadius = shape.borderRadius.resolve(TextDirection.ltr);
+
+    expect(tester.getSize(find.byType(NavigationBar)), const Size(360, 64));
+    expect(borderRadius.topLeft.x, 32);
+    expect(material.elevation, 3);
+  });
+
+  testWidgets('考勤页下滑收起底部导航并在上滑时恢复', (tester) async {
+    await _pumpApp(tester, size: const Size(430, 760));
+    final slideFinder = find.byKey(const ValueKey('bottom-navigation-slide'));
+
+    expect(tester.widget<AnimatedSlide>(slideFinder).offset, Offset.zero);
+
+    await tester.drag(
+      find.byType(ReorderableListView),
+      const Offset(0, -320),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedSlide>(slideFinder).offset, const Offset(0, 1));
+
+    await tester.drag(
+      find.byType(ReorderableListView),
+      const Offset(0, 180),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedSlide>(slideFinder).offset, Offset.zero);
+  });
+
   testWidgets('设置页震动开关默认开启并可关闭保存', (tester) async {
     await _pumpApp(tester);
 
