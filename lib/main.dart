@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/attendance.dart';
@@ -37,14 +38,17 @@ class RollCallApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
-      title: '快捷考勤喵',
-      theme: buildAppTheme(Brightness.light),
-      darkTheme: buildAppTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
-      home: const RollCallPage(),
+    return LiquidGlassWidgets.wrap(
+      brightnessResolver: Theme.maybeBrightnessOf,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        showPerformanceOverlay: kDebugMode && _performanceDiagnostics,
+        title: '快捷考勤喵',
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
+        themeMode: ThemeMode.system,
+        home: const RollCallPage(),
+      ),
     );
   }
 }
@@ -599,56 +603,6 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
-/// 右下角悬浮按钮菜单里的一项操作。
-class _FabMenuAction extends StatelessWidget {
-  const _FabMenuAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final enabled = onTap != null;
-    final foreground = enabled
-        ? scheme.onSecondaryContainer
-        : scheme.onSurfaceVariant.withValues(alpha: .45);
-    return Material(
-      color: enabled
-          ? scheme.secondaryContainer
-          : scheme.surfaceContainerHighest.withValues(alpha: .7),
-      elevation: enabled ? 3 : 0,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: foreground),
-              const SizedBox(width: 9),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: foreground,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 固定在顶部的筛选条（考勤页 NestedScrollView 的 header sliver）。
 class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
   const _PinnedHeaderDelegate({required this.child, required this.height});
@@ -676,90 +630,7 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.child != child || oldDelegate.height != height;
 }
 
-/// 悬浮菜单里的一项：随菜单开合做「弹出 / 收回」动画。
-///
-/// `order` 表示距离悬浮按钮的远近，0 是最靠按钮、最先弹出的一项，
-/// 这样展开时从下往上依次弹出，收起时又依次缩回按钮方向。
-class _FabMenuEntry extends StatelessWidget {
-  const _FabMenuEntry({
-    required this.animation,
-    required this.order,
-    required this.count,
-    required this.child,
-  });
-
-  final Animation<double> animation;
-  final int order;
-  final int count;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    // 每项错开 55% 的时间出发，剩下 45% 用来收尾，避免弹成一坨。
-    final start = count <= 1 ? 0.0 : order / count * .55;
-    final progress = animation.drive(
-      CurveTween(curve: Interval(start, 1, curve: Curves.easeOutCubic)),
-    );
-    return SizeTransition(
-      sizeFactor: progress,
-      // SizeTransition 内部是 Align(heightFactor: ...)，宽度默认会撑满可用空间，
-      // 只靠 alignment 定位就会把菜单项顶到屏幕左边。fixedCrossAxisSizeFactor: 1
-      // 让宽度仍然按内容收缩，项才会老老实实贴着右下角的按钮。
-      fixedCrossAxisSizeFactor: 1,
-      // 高度向着悬浮按钮的方向展开/收缩，避免按钮跳位。
-      alignment: AlignmentDirectional.bottomEnd,
-      child: FadeTransition(
-        opacity: progress,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, .35),
-            end: Offset.zero,
-          ).animate(progress),
-          child: ScaleTransition(
-            scale: Tween<double>(begin: .8, end: 1).animate(progress),
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: child,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 筛选条上的数量角标，用来替代原先顶部的四块统计卡片。
-class _FilterCount extends StatelessWidget {
-  const _FilterCount(this.count, {required this.highlighted});
-
-  final int count;
-  final bool highlighted;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: highlighted
-            ? scheme.primary.withValues(alpha: .18)
-            : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        '$count',
-        style: TextStyle(
-          fontSize: 11,
-          height: 1.3,
-          fontWeight: FontWeight.w700,
-          color: highlighted ? scheme.primary : scheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-}
-
 class _LongPressReorderableDragStartListener
     extends ReorderableDragStartListener {
   const _LongPressReorderableDragStartListener({
@@ -794,6 +665,47 @@ class _HapticDelayedMultiDragGestureRecognizer
 /// 主页的三个 Tab。
 enum _HomeTab { attendance, toolbox, settings }
 
+/// 在 Scaffold 的真实布局坐标里下移悬浮按钮，保证视觉位置和点击区域一致。
+class _ShiftedEndFloatFabLocation extends FloatingActionButtonLocation {
+  const _ShiftedEndFloatFabLocation(this.verticalShift);
+
+  final double verticalShift;
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    return FloatingActionButtonLocation.endFloat.getOffset(scaffoldGeometry) +
+        Offset(0, verticalShift);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ShiftedEndFloatFabLocation &&
+      other.verticalShift == verticalShift;
+
+  @override
+  int get hashCode => verticalShift.hashCode;
+}
+
+/// 位置变化只做平滑位移，不使用默认的缩小再放大动画。
+class _SlidingFabAnimator extends FloatingActionButtonAnimator {
+  const _SlidingFabAnimator();
+
+  @override
+  Offset getOffset({
+    required Offset begin,
+    required Offset end,
+    required double progress,
+  }) => Offset.lerp(begin, end, Curves.easeInOutCubic.transform(progress))!;
+
+  @override
+  Animation<double> getScaleAnimation({required Animation<double> parent}) =>
+      const AlwaysStoppedAnimation(1);
+
+  @override
+  Animation<double> getRotationAnimation({required Animation<double> parent}) =>
+      const AlwaysStoppedAnimation(0);
+}
+
 class RollCallPage extends StatefulWidget {
   const RollCallPage({super.key});
 
@@ -801,8 +713,11 @@ class RollCallPage extends StatefulWidget {
   State<RollCallPage> createState() => _RollCallPageState();
 }
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LiquidGlassWidgets.initialize(
+    enablePerformanceMonitor: kDebugMode && _performanceDiagnostics,
+  );
   if (kDebugMode && _performanceDiagnostics) {
     SchedulerBinding.instance.addTimingsCallback((timings) {
       for (final timing in timings) {
@@ -821,7 +736,7 @@ void main() {
 }
 
 class _RollCallPageState extends State<RollCallPage>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   static const _storageKey = StorageKeys.people;
   static const _hasImportedRosterKey = StorageKeys.hasImportedRoster;
   static const _lastModifiedStorageKey = StorageKeys.lastModified;
@@ -846,8 +761,6 @@ class _RollCallPageState extends State<RollCallPage>
   final _rosterScrollController = ScrollController();
   final _quickImportBackend = createQuickImportBackend();
 
-  /// 驱动右下角菜单的展开/收起，同一根动画同时控制每项的错落节奏。
-  late final AnimationController _fabController;
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
@@ -859,7 +772,6 @@ class _RollCallPageState extends State<RollCallPage>
   bool _loading = true;
   bool _hasImportedRoster = false;
   bool _selectionMode = false;
-  bool _fabOpen = false;
   bool _navigationBarVisible = true;
   bool _hapticEnabled = true;
   int _nextId = 1;
@@ -882,54 +794,21 @@ class _RollCallPageState extends State<RollCallPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _fabController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-      reverseDuration: const Duration(milliseconds: 180),
-    )..addStatusListener(_handleFabStatus);
     _load();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _fabController.dispose();
     _rosterScrollController.dispose();
     _searchController.dispose();
     super.dispose();
-  }
-
-  /// 收起动画跑完后把菜单项真正从树上摘掉。
-  void _handleFabStatus(AnimationStatus status) {
-    if (status == AnimationStatus.dismissed && mounted) setState(() {});
-  }
-
-  void _toggleActionMenu() {
-    Haptic.light();
-    setState(() {
-      _fabOpen = !_fabOpen;
-      if (_fabOpen) {
-        _fabController.forward();
-      } else {
-        _fabController.reverse();
-      }
-    });
-  }
-
-  /// 选中菜单项后立即收起：马上会有弹窗或新页面盖上来，不必再走收起动画。
-  void _dismissActionMenu() {
-    _fabOpen = false;
-    _fabController.value = 0;
-    setState(() {});
   }
 
   void _selectTab(int index) {
     Haptic.selection();
     final next = _HomeTab.values[index];
     final reselected = next == _tab;
-    // 离开考勤页时悬浮菜单会被移除，状态要一并复位，避免下次进来残着展开。
-    _fabOpen = false;
-    _fabController.value = 0;
     setState(() {
       _tab = next;
       _navigationBarVisible = true;
@@ -1816,7 +1695,9 @@ class _RollCallPageState extends State<RollCallPage>
       courseName: course?.name,
       teacher: course?.teacher,
       room: course?.room,
-      timeRange: course == null ? null : '${course.startTime}-${course.endTime}',
+      timeRange: course == null
+          ? null
+          : '${course.startTime}-${course.endTime}',
       entries: [
         for (final person in _people)
           AttendanceRecordEntry(
@@ -1850,10 +1731,8 @@ class _RollCallPageState extends State<RollCallPage>
   Future<void> _openRosterEditor() async {
     final result = await Navigator.of(context).push<RosterEditorResult>(
       MaterialPageRoute(
-        builder: (_) => RosterEditorPage(
-          people: _people,
-          fieldNames: _personFields,
-        ),
+        builder: (_) =>
+            RosterEditorPage(people: _people, fieldNames: _personFields),
       ),
     );
     if (!mounted || result == null) return;
@@ -1863,15 +1742,11 @@ class _RollCallPageState extends State<RollCallPage>
         ..clear()
         ..addAll(result.people);
       _personFields = result.fieldNames;
-      _selected.removeWhere(
-        (id) => !_people.any((person) => person.id == id),
-      );
+      _selected.removeWhere((id) => !_people.any((person) => person.id == id));
       if (_people.isEmpty) _selectionMode = false;
       if (_people.isNotEmpty) {
         _nextId =
-            _people
-                .map((person) => person.id)
-                .reduce((a, b) => a > b ? a : b) +
+            _people.map((person) => person.id).reduce((a, b) => a > b ? a : b) +
             1;
       }
     });
@@ -1880,9 +1755,9 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Future<void> _openBackupRestore() async {
-    final restored = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const BackupRestorePage()),
-    );
+    final restored = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const BackupRestorePage()));
     if (restored != true || !mounted) return;
     await _reloadFromStorage();
     _toast('数据已还原');
@@ -1906,6 +1781,13 @@ class _RollCallPageState extends State<RollCallPage>
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 840;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final hiddenNavigationFabShift =
+        64.0 + (bottomInset < 8 ? 8 - bottomInset : 0);
+    final actionButtonShift =
+        _tab == _HomeTab.attendance && !_navigationBarVisible
+        ? hiddenNavigationFabShift
+        : 0.0;
     final body = _loading
         ? const Center(child: CircularProgressIndicator())
         : switch (_tab) {
@@ -1937,13 +1819,17 @@ class _RollCallPageState extends State<RollCallPage>
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
-        extendBody: !_selectionMode,
+        extendBody: true,
         appBar: _buildAppBar(),
         // extendBody 让页面铺到底栏背后，避免为圆角导航留出矩形背景板。
         body: body,
         floatingActionButton: (!_loading && _showActionButton)
             ? _buildActionMenu()
             : null,
+        floatingActionButtonLocation: _ShiftedEndFloatFabLocation(
+          actionButtonShift,
+        ),
+        floatingActionButtonAnimator: const _SlidingFabAnimator(),
         bottomNavigationBar: _selectionMode
             ? _buildBatchBar()
             : _buildBottomNavigationBar(),
@@ -1952,49 +1838,50 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   /// 参考 PiliPlus 的胶囊形悬浮导航：保留 Material 3 的目的地交互，
-  /// 只把外层改为带边距、圆角和轻微阴影的浮动容器。
+  /// 玻璃托盘与会形变的整块选中态由 liquid_glass_widgets 负责。
   Widget _buildBottomNavigationBar() {
     final colorScheme = Theme.of(context).colorScheme;
-    final bar = Material(
+    final bar = KeyedSubtree(
       key: const ValueKey('floating-bottom-navigation'),
-      color: colorScheme.surfaceContainer,
-      surfaceTintColor: colorScheme.surfaceTint,
-      elevation: 3,
-      shadowColor: colorScheme.shadow.withValues(alpha: 0.18),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(32),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.55),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: 64,
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Row(
-            children: [
-              _buildNavigationDestination(
-                index: _HomeTab.attendance.index,
-                icon: Icons.fact_check_outlined,
-                selectedIcon: Icons.fact_check_rounded,
-                label: '考勤',
-              ),
-              _buildNavigationDestination(
-                index: _HomeTab.toolbox.index,
-                icon: Icons.widgets_outlined,
-                selectedIcon: Icons.widgets_rounded,
-                label: '工具箱',
-              ),
-              _buildNavigationDestination(
-                index: _HomeTab.settings.index,
-                icon: Icons.settings_outlined,
-                selectedIcon: Icons.settings_rounded,
-                label: '设置',
-              ),
-            ],
+      child: GlassTabBar.bottom(
+        key: const ValueKey('glass-bottom-navigation'),
+        selectedIndex: _tab.index,
+        onTabSelected: _selectTab,
+        horizontalPadding: 0,
+        verticalPadding: 0,
+        barHeight: 64,
+        barBorderRadius: 32,
+        tabWidth: 86,
+        iconLabelSpacing: 2,
+        labelFontSize: 12,
+        indicatorBorderRadius: 28,
+        indicatorColor: colorScheme.secondaryContainer.withValues(alpha: 0.32),
+        selectedIconColor: colorScheme.onSecondaryContainer,
+        selectedLabelColor: colorScheme.onSecondaryContainer,
+        unselectedIconColor: colorScheme.onSurfaceVariant,
+        unselectedLabelColor: colorScheme.onSurfaceVariant,
+        interactionGlowColor: colorScheme.primary,
+        quality: GlassQuality.standard,
+        backgroundQuality: GlassQuality.standard,
+        magnification: 1.08,
+        pressScale: 1.03,
+        tabs: const [
+          GlassTab(
+            icon: Icon(Icons.fact_check_outlined),
+            activeIcon: Icon(Icons.fact_check_rounded),
+            label: '考勤',
           ),
-        ),
+          GlassTab(
+            icon: Icon(Icons.widgets_outlined),
+            activeIcon: Icon(Icons.widgets_rounded),
+            label: '工具箱',
+          ),
+          GlassTab(
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings_rounded),
+            label: '设置',
+          ),
+        ],
       ),
     );
 
@@ -2017,82 +1904,6 @@ class _RollCallPageState extends State<RollCallPage>
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 258),
               child: bar,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavigationDestination({
-    required int index,
-    required IconData icon,
-    required IconData selectedIcon,
-    required String label,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final selected = _tab.index == index;
-    final foreground = selected
-        ? colorScheme.onSecondaryContainer
-        : colorScheme.onSurfaceVariant;
-    final shape = BorderRadius.circular(28);
-
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
-        child: Tooltip(
-          message: label,
-          child: AnimatedContainer(
-            key: ValueKey('bottom-navigation-destination-$index'),
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              color: selected
-                  ? colorScheme.secondaryContainer
-                  : Colors.transparent,
-              borderRadius: shape,
-            ),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: shape,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                key: ValueKey('bottom-navigation-button-$index'),
-                borderRadius: shape,
-                onTap: () => _selectTab(index),
-                overlayColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.pressed)) {
-                    return colorScheme.primary.withValues(alpha: 0.14);
-                  }
-                  if (states.contains(WidgetState.hovered) ||
-                      states.contains(WidgetState.focused)) {
-                    return foreground.withValues(alpha: 0.08);
-                  }
-                  return null;
-                }),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(selected ? selectedIcon : icon, color: foreground),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.fade,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 12,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ),
@@ -2127,8 +1938,8 @@ class _RollCallPageState extends State<RollCallPage>
                     delegate: _PinnedHeaderDelegate(
                       height: 52,
                       child: SizedBox.expand(
-                        child: ColoredBox(
-                          color: Theme.of(context).scaffoldBackgroundColor,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
                           child: _buildFilterToolbar(isWide),
                         ),
                       ),
@@ -2149,6 +1960,7 @@ class _RollCallPageState extends State<RollCallPage>
 
   /// 右下角悬浮菜单，替代原来标题栏右侧的一排操作按钮。
   Widget _buildActionMenu() {
+    final scheme = Theme.of(context).colorScheme;
     final unmarked = _count(AttendanceStatus.unmarked);
     final actions = <({IconData icon, String label, VoidCallback? onTap})>[
       (
@@ -2164,7 +1976,7 @@ class _RollCallPageState extends State<RollCallPage>
       ),
       (
         icon: Icons.assignment_late_outlined,
-        label: '未点名全部标记为旷课',
+        label: '未点名标记旷课',
         onTap: unmarked == 0 ? null : _markUnmarkedTruancy,
       ),
       (
@@ -2173,44 +1985,67 @@ class _RollCallPageState extends State<RollCallPage>
         onTap: _people.isEmpty ? null : _resetAttendance,
       ),
     ];
-    final showItems = _fabOpen || _fabController.value > 0;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        if (showItems)
-          for (var index = 0; index < actions.length; index++)
-            _FabMenuEntry(
-              animation: _fabController,
-              // 列表第一个在最上面，所以离按钮最近的序号要倒着数。
-              order: actions.length - 1 - index,
-              count: actions.length,
-              child: _FabMenuAction(
-                icon: actions[index].icon,
-                label: actions[index].label,
-                onTap: actions[index].onTap == null
-                    ? null
-                    : () {
-                        _dismissActionMenu();
-                        actions[index].onTap!();
-                      },
-              ),
-            ),
-        FloatingActionButton(
+    return GlassMenu(
+      key: const ValueKey('glass-action-menu'),
+      menuWidth: 220,
+      menuHeight: actions.length * 52 + 12,
+      menuBorderRadius: 20,
+      itemBorderRadius: 14,
+      menuPadding: const EdgeInsets.symmetric(vertical: 6),
+      menuAlignment: GlassMenuAlignment.bottomRight,
+      autoAdjustToScreen: true,
+      quality: GlassQuality.standard,
+      glowColor: scheme.primary,
+      selectionColor: scheme.primary.withValues(alpha: .14),
+      settings: LiquidGlassSettings(
+        glassColor: scheme.surface.withValues(alpha: .14),
+        thickness: 30,
+        blur: 8,
+        refractiveIndex: 1.24,
+        lightIntensity: 1.1,
+        ambientStrength: .18,
+        fresnelStrength: 1.3,
+        glowIntensity: .75,
+        shadowElevation: 3,
+      ),
+      triggerBuilder: (context, toggleMenu) => Tooltip(
+        message: '更多操作',
+        child: GlassIconButton(
           key: const ValueKey('fab-menu-toggle'),
-          tooltip: _fabOpen ? '收起操作' : '更多操作',
-          onPressed: _toggleActionMenu,
-          child: RotationTransition(
-            // 和菜单用同一根动画，展开和收起时图标都转得连贯。
-            turns: _fabController.drive(
-              Tween<double>(
-                begin: 0,
-                end: .125,
-              ).chain(CurveTween(curve: Curves.easeOutCubic)),
-            ),
-            child: const Icon(Icons.add_rounded),
-          ),
+          semanticLabel: '更多操作',
+          onPressed: () {
+            Haptic.light();
+            toggleMenu();
+          },
+          size: 56,
+          useOwnLayer: true,
+          quality: GlassQuality.standard,
+          glowColor: scheme.primary,
+          icon: const Icon(Icons.add_rounded),
         ),
+      ),
+      items: [
+        for (final action in actions)
+          GlassMenuItem(
+            key: ValueKey('fab-menu-action-${action.label}'),
+            title: action.label,
+            height: 48,
+            icon: Icon(action.icon),
+            iconColor: action.onTap == null
+                ? scheme.onSurfaceVariant.withValues(alpha: .42)
+                : scheme.primary,
+            enabled: action.onTap != null,
+            titleStyle: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: action.onTap == null
+                  ? scheme.onSurfaceVariant.withValues(alpha: .42)
+                  : scheme.onSurface,
+            ),
+            onTap: () {
+              Haptic.selection();
+              action.onTap?.call();
+            },
+          ),
       ],
     );
   }
@@ -2236,7 +2071,9 @@ class _RollCallPageState extends State<RollCallPage>
     );
   }
 
-  Widget _buildFilterChips() {
+  Widget _buildFilterSegments(bool isWide) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final filters = [
       (RosterFilter.all, '全部', _people.length),
       (RosterFilter.unmarked, '未点名', _count(AttendanceStatus.unmarked)),
@@ -2244,64 +2081,81 @@ class _RollCallPageState extends State<RollCallPage>
       (RosterFilter.issue, '异常', _countAttendanceIssues()),
       (RosterFilter.leave, '请假', _countLeaveTypes()),
     ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final item in filters) ...[
-            FilterChip(
-              label: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(item.$2),
-                  const SizedBox(width: 6),
-                  _FilterCount(item.$3, highlighted: _filter == item.$1),
-                ],
-              ),
-              selected: _filter == item.$1,
-              onSelected: (_) => _setFilter(item.$1),
-            ),
-            const SizedBox(width: 6),
-          ],
-        ],
+    return GlassSegmentedControl(
+      key: const ValueKey('glass-filter-toolbar'),
+      segments: [
+        for (final item in filters)
+          GlassSegment(
+            id: item.$1,
+            label: '${item.$2} ${item.$3}',
+            semanticLabel: '筛选：${item.$2}',
+          ),
+      ],
+      selectedIndex: filters.indexWhere((item) => item.$1 == _filter),
+      onSegmentSelected: (index) => _setFilter(filters[index].$1),
+      height: 48,
+      borderRadius: 17,
+      indicatorBorderRadius: 15,
+      padding: const EdgeInsets.all(3),
+      selectedTextStyle: TextStyle(
+        fontSize: isWide ? 13.5 : 12,
+        fontWeight: FontWeight.w700,
+        color: scheme.onSurface,
       ),
+      unselectedTextStyle: TextStyle(
+        fontSize: isWide ? 13.5 : 12,
+        fontWeight: FontWeight.w600,
+        color: scheme.onSurfaceVariant,
+      ),
+      backgroundColor: scheme.surface.withValues(alpha: .12),
+      indicatorColor: Colors.white.withValues(alpha: dark ? .10 : .42),
+      indicatorSettings: LiquidGlassSettings(
+        glassColor: Colors.white.withValues(alpha: .06),
+        thickness: 24,
+        blur: 5,
+        refractiveIndex: 1.2,
+        lightIntensity: .85,
+        ambientStrength: .18,
+        ambientRim: .18,
+        fresnelStrength: 1.15,
+        glowIntensity: .75,
+        backerColor: scheme.surfaceContainerHighest.withValues(alpha: .14),
+        shadowElevation: 1,
+      ),
+      indicatorPinchStrength: .25,
+      indicatorExpansion: const EdgeInsets.symmetric(
+        horizontal: 5,
+        vertical: 3,
+      ),
+      glowColor: scheme.primary,
+      useOwnLayer: true,
+      quality: GlassQuality.standard,
     );
   }
 
   Widget _buildFilterToolbar(bool isWide) {
-    final chips = _buildFilterChips();
-    if (!isWide) {
-      return Row(
-        children: [
-          Expanded(child: chips),
-          IconButton(
-            tooltip: _selectionMode ? '退出批量' : '批量选择',
-            onPressed: _toggleSelectionMode,
-            icon: Icon(
-              _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
-            ),
-          ),
-        ],
-      );
-    }
-
+    final scheme = Theme.of(context).colorScheme;
+    final tooltip = _selectionMode ? '退出批量' : '批量选择';
     return Row(
       children: [
-        Text(
-          '筛选',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+        Expanded(child: _buildFilterSegments(isWide)),
+        const SizedBox(width: 8),
+        Tooltip(
+          message: tooltip,
+          child: GlassIconButton(
+            semanticLabel: tooltip,
+            onPressed: _toggleSelectionMode,
+            size: 48,
+            shape: GlassIconButtonShape.roundedSquare,
+            borderRadius: 17,
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            glowColor: scheme.primary,
+            icon: Icon(
+              _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
+              color: _selectionMode ? scheme.primary : scheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: chips),
-        TextButton.icon(
-          onPressed: _toggleSelectionMode,
-          icon: Icon(
-            _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
-          ),
-          label: Text(_selectionMode ? '退出批量' : '批量'),
         ),
       ],
     );
@@ -2385,80 +2239,97 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Widget _buildBatchBar() {
-    return SafeArea(
-      top: false,
-      child: Material(
-        elevation: 16,
-        color: Theme.of(context).colorScheme.inverseSurface,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () => setState(() {
-                  _selected.clear();
-                  _selectionMode = false;
-                }),
-                color: Theme.of(context).colorScheme.onInverseSurface,
-                icon: const Icon(Icons.close_rounded),
-              ),
-              Text(
-                '${_selected.length}人',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onInverseSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              IconButton(
-                onPressed: _selectAllVisible,
-                tooltip: _allVisibleSelected ? '全不选' : '全选',
-                color: Theme.of(context).colorScheme.onInverseSurface,
-                icon: Icon(
-                  _allVisibleSelected
-                      ? Icons.deselect_rounded
-                      : Icons.select_all_rounded,
-                ),
-              ),
-              IconButton(
-                onPressed: _invertSelectionVisible,
-                tooltip: '反选',
-                color: Theme.of(context).colorScheme.onInverseSurface,
-                icon: const Icon(Icons.flip_to_back_rounded),
-              ),
-              const Spacer(),
-              for (final status in [
-                AttendanceStatus.present,
-                AttendanceStatus.truancy,
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(left: 5),
-                  child: status == AttendanceStatus.truancy
-                      ? AttendanceExceptionStatusButton(
-                          status: AttendanceStatus.truancy,
-                          active: false,
-                          showLabel: false,
-                          compact: true,
-                          onSelected: _batchSetStatus,
-                        )
-                      : IconButton.filledTonal(
-                          tooltip: status.label,
-                          onPressed: () => _batchSetStatus(status),
-                          icon: Icon(
-                            status.icon,
-                            color: status.adaptiveColor(context),
-                          ),
-                        ),
-                ),
-              IconButton(
-                tooltip: '删除',
-                onPressed: _deleteSelected,
-                color: Theme.of(context).colorScheme.errorContainer,
-                icon: const Icon(Icons.delete_outline_rounded),
-              ),
-            ],
+    final scheme = Theme.of(context).colorScheme;
+    Widget glassAction({
+      required String tooltip,
+      required VoidCallback onPressed,
+      required Widget icon,
+    }) {
+      return Tooltip(
+        message: tooltip,
+        child: GlassIconButton(
+          semanticLabel: tooltip,
+          onPressed: onPressed,
+          size: 42,
+          shape: GlassIconButtonShape.roundedSquare,
+          borderRadius: 13,
+          quality: GlassQuality.standard,
+          glowColor: scheme.primary,
+          icon: icon,
+        ),
+      );
+    }
+
+    return GlassToolbar(
+      key: const ValueKey('glass-batch-toolbar'),
+      height: 60,
+      quality: GlassQuality.standard,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      backgroundColor: scheme.surface.withValues(alpha: 0.08),
+      children: [
+        glassAction(
+          tooltip: '退出批量',
+          onPressed: () => setState(() {
+            _selected.clear();
+            _selectionMode = false;
+          }),
+          icon: Icon(Icons.close_rounded, color: scheme.onSurface),
+        ),
+        Text(
+          '${_selected.length}人',
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w700,
           ),
         ),
-      ),
+        glassAction(
+          tooltip: _allVisibleSelected ? '全不选' : '全选',
+          onPressed: _selectAllVisible,
+          icon: Icon(
+            _allVisibleSelected
+                ? Icons.deselect_rounded
+                : Icons.select_all_rounded,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        glassAction(
+          tooltip: '反选',
+          onPressed: _invertSelectionVisible,
+          icon: Icon(
+            Icons.flip_to_back_rounded,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const Spacer(),
+        for (final status in [
+          AttendanceStatus.present,
+          AttendanceStatus.truancy,
+        ])
+          Padding(
+            padding: const EdgeInsets.only(left: 5),
+            child: status == AttendanceStatus.truancy
+                ? AttendanceExceptionStatusButton(
+                    status: AttendanceStatus.truancy,
+                    active: false,
+                    showLabel: false,
+                    compact: true,
+                    onSelected: _batchSetStatus,
+                  )
+                : glassAction(
+                    tooltip: status.label,
+                    onPressed: () => _batchSetStatus(status),
+                    icon: Icon(
+                      status.icon,
+                      color: status.adaptiveColor(context),
+                    ),
+                  ),
+          ),
+        glassAction(
+          tooltip: '删除',
+          onPressed: _deleteSelected,
+          icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
+        ),
+      ],
     );
   }
 }

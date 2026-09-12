@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _pumpApp(
@@ -28,8 +29,7 @@ Future<void> _pumpApp(
 
 /// 切换到主页底部导航栏的某个 Tab。
 Future<void> _openTab(WidgetTester tester, String label) async {
-  final index = const {'考勤': 0, '工具箱': 1, '设置': 2}[label]!;
-  await tester.tap(find.byKey(ValueKey('bottom-navigation-button-$index')));
+  await tester.tap(find.text(label).first);
   await tester.pumpAndSettle();
 }
 
@@ -43,15 +43,7 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
 
 const _fabToggleKey = ValueKey('fab-menu-toggle');
 
-/// 读取悬浮菜单里某一项当前的弹出进度：0 = 完全收起，1 = 完全展开。
-double _menuEntryProgress(WidgetTester tester, String label) {
-  final fade = tester.widget<FadeTransition>(
-    find
-        .ancestor(of: find.text(label), matching: find.byType(FadeTransition))
-        .first,
-  );
-  return fade.opacity.value;
-}
+Finder _rosterFilter(String label) => find.textContaining('$label ');
 
 Future<void> _openCopyFormatEditor(WidgetTester tester) async {
   await _openTab(tester, '设置');
@@ -216,7 +208,7 @@ void main() {
     // 首页只有搜索栏与筛选条，没有标题栏/Logo。
     expect(find.byType(AppBar), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
+    expect(_rosterFilter('全部'), findsOneWidget);
     expect(find.text('刘一'), findsOneWidget);
     expect(find.text('名单还是空的'), findsNothing);
 
@@ -234,11 +226,11 @@ void main() {
     await tester.tap(find.text('公假'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilterChip, '异常'));
+    await tester.tap(_rosterFilter('异常'));
     await tester.pumpAndSettle();
     expect(find.text('在“异常”筛选下没有匹配人员'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilterChip, '请假'));
+    await tester.tap(_rosterFilter('请假'));
     await tester.pumpAndSettle();
     expect(find.text('刘一'), findsOneWidget);
   });
@@ -246,7 +238,7 @@ void main() {
   testWidgets('筛选中点名后显示姓名并可撤销', (tester) async {
     await _pumpApp(tester);
 
-    await tester.tap(find.widgetWithText(FilterChip, '未点名'));
+    await tester.tap(_rosterFilter('未点名'));
     await tester.pumpAndSettle();
 
     final liuYiRow = find.ancestor(
@@ -275,7 +267,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1人'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilterChip, '正常'));
+    await tester.tap(_rosterFilter('正常'));
     await tester.pumpAndSettle();
     expect(find.text('0人'), findsOneWidget);
     expect(find.text('已取消 1 名筛选外人员的选择'), findsOneWidget);
@@ -446,12 +438,12 @@ void main() {
     expect(find.textContaining('上次修改：'), findsOneWidget);
     expect(find.text('随机点人'), findsNothing);
     expect(find.text('复制考勤情况'), findsNothing);
-    expect(find.text('未点名全部标记为旷课'), findsNothing);
+    expect(find.text('未点名标记旷课'), findsNothing);
     expect(find.text('重置考勤'), findsNothing);
 
     await _openTab(tester, '考勤');
     expect(find.byType(AppBar), findsNothing);
-    expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
+    expect(_rosterFilter('全部'), findsOneWidget);
   });
 
   testWidgets('底部导航使用圆角悬浮样式与整块选中效果', (tester) async {
@@ -460,30 +452,19 @@ void main() {
     final navigationFinder = find.byKey(
       const ValueKey('floating-bottom-navigation'),
     );
-    final material = tester.widget<Material>(navigationFinder);
-    final shape = material.shape! as RoundedRectangleBorder;
-    final borderRadius = shape.borderRadius.resolve(TextDirection.ltr);
-    final selectedFinder = find.byKey(
-      const ValueKey('bottom-navigation-destination-0'),
-    );
-    final selected = tester.widget<AnimatedContainer>(selectedFinder);
-    final selectedDecoration = selected.decoration! as BoxDecoration;
-    final hoverButton = tester.widget<InkWell>(
-      find.byKey(const ValueKey('bottom-navigation-button-0')),
-    );
+    final glassBar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
 
     expect(tester.getSize(navigationFinder), const Size(258, 64));
-    expect(tester.getSize(selectedFinder).height, 56);
-    expect(selectedDecoration.color, isNot(Colors.transparent));
-    expect(
-      hoverButton.overlayColor!.resolve({WidgetState.hovered}),
-      isNotNull,
-    );
-    expect(borderRadius.topLeft.x, 32);
-    expect(material.elevation, 3);
+    expect(glassBar.tabWidth, 86);
+    expect(glassBar.barHeight, 64);
+    expect(glassBar.barBorderRadius, 32);
+    expect(glassBar.indicatorBorderRadius, 28);
+    expect(glassBar.quality, GlassQuality.standard);
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-    final rosterBottom = tester.getRect(find.byType(ReorderableListView)).bottom;
+    final rosterBottom = tester
+        .getRect(find.byType(ReorderableListView))
+        .bottom;
     final navigationTop = tester
         .getRect(find.byKey(const ValueKey('floating-bottom-navigation')))
         .top;
@@ -495,22 +476,30 @@ void main() {
   testWidgets('考勤页下滑收起底部导航并在上滑时恢复', (tester) async {
     await _pumpApp(tester, size: const Size(430, 760));
     final slideFinder = find.byKey(const ValueKey('bottom-navigation-slide'));
+    final fabFinder = find.byKey(_fabToggleKey);
 
     expect(tester.widget<AnimatedSlide>(slideFinder).offset, Offset.zero);
+    final fabAtRest = tester.getCenter(fabFinder);
 
-    await tester.drag(
-      find.byType(ReorderableListView),
-      const Offset(0, -320),
-    );
+    await tester.drag(find.byType(ReorderableListView), const Offset(0, -320));
     await tester.pumpAndSettle();
-    expect(tester.widget<AnimatedSlide>(slideFinder).offset, const Offset(0, 1));
-
-    await tester.drag(
-      find.byType(ReorderableListView),
-      const Offset(0, 180),
+    expect(
+      tester.widget<AnimatedSlide>(slideFinder).offset,
+      const Offset(0, 1),
     );
+    final fabWithNavigationHidden = tester.getCenter(fabFinder);
+    expect(fabWithNavigationHidden.dy, greaterThan(fabAtRest.dy + 60));
+    // 下沉后的实际布局坐标也必须跟着移动，按钮仍然可以直接命中。
+    await tester.tap(fabFinder);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('fab-menu-action-添加人员')), findsOneWidget);
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(ReorderableListView), const Offset(0, 180));
     await tester.pumpAndSettle();
     expect(tester.widget<AnimatedSlide>(slideFinder).offset, Offset.zero);
+    expect(tester.getCenter(fabFinder).dy, closeTo(fabAtRest.dy, .5));
   });
 
   testWidgets('设置页震动开关默认开启并可关闭保存', (tester) async {
@@ -533,10 +522,7 @@ void main() {
   });
 
   testWidgets('震动开关关闭状态会从存储恢复', (tester) async {
-    await _pumpApp(
-      tester,
-      initialValues: {StorageKeys.hapticEnabled: false},
-    );
+    await _pumpApp(tester, initialValues: {StorageKeys.hapticEnabled: false});
 
     await _openTab(tester, '设置');
     await tester.drag(find.byType(ListView), const Offset(0, -420));
@@ -544,9 +530,7 @@ void main() {
 
     expect(
       tester
-          .widget<SwitchListTile>(
-            find.widgetWithText(SwitchListTile, '震动反馈'),
-          )
+          .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '震动反馈'))
           .value,
       isFalse,
     );
@@ -638,10 +622,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('添加字段'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, '字段名').at(2),
-      '班级',
-    );
+    await tester.enterText(find.widgetWithText(TextField, '字段名').at(2), '班级');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -662,7 +643,9 @@ void main() {
     await tester.pumpAndSettle();
     // 名称为空时确认按钮禁用。
     expect(
-      tester.widget<FilledButton>(find.widgetWithText(FilledButton, '添加')).onPressed,
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '添加'))
+          .onPressed,
       isNull,
     );
 
@@ -856,10 +839,18 @@ void main() {
   testWidgets('搜索框随滚动逐帧上滑，筛选条钉在顶部', (tester) async {
     await _pumpApp(tester);
 
+    expect(find.byKey(const ValueKey('glass-filter-toolbar')), findsOneWidget);
+    final filterControl = tester.widget<GlassSegmentedControl>(
+      find.byKey(const ValueKey('glass-filter-toolbar')),
+    );
+    expect(filterControl.indicatorColor, isNot(Colors.transparent));
+    expect(filterControl.indicatorSettings, isNotNull);
+    expect(filterControl.quality, GlassQuality.standard);
+
     // 滑出视口后 sliver 会被视口标记为 offstage，find.byType 默认会跳过它，
     // 这里要显式带上 offstage 的控件才能量到它被推到了哪儿。
     final searchField = find.byType(TextField, skipOffstage: false);
-    final chips = find.widgetWithText(FilterChip, '全部');
+    final chips = _rosterFilter('全部');
 
     // 名单滚动起来后第一行可能被钉住的筛选条挡住或移出屏幕，
     // 直接 drag 它会打空，所以固定从列表中间的空白处拖。
@@ -909,67 +900,39 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('glass-action-menu')), findsOneWidget);
     expect(find.text('添加人员'), findsOneWidget);
     expect(find.text('复制考勤情况'), findsOneWidget);
-    expect(find.text('未点名全部标记为旷课'), findsOneWidget);
+    expect(find.text('未点名标记旷课'), findsOneWidget);
     expect(find.text('重置考勤'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(find.text('添加人员'), findsNothing);
   });
 
-  testWidgets('悬浮菜单项从下往上依次弹出且收起有动画', (tester) async {
+  testWidgets('加号液态展开为单块玻璃菜单', (tester) async {
     await _pumpApp(tester);
 
     final fabBefore = tester.getCenter(find.byKey(_fabToggleKey));
 
     await tester.tap(find.byKey(_fabToggleKey));
-    await tester.pump();
-    // 第一帧：菜单项已经挂上，但都还没开始弹。
-    expect(find.text('重置考勤'), findsOneWidget);
-    expect(_menuEntryProgress(tester, '重置考勤'), 0);
-    expect(_menuEntryProgress(tester, '添加人员'), 0);
-
-    await tester.pump(const Duration(milliseconds: 100));
-    final nearest = _menuEntryProgress(tester, '重置考勤');
-    final farthest = _menuEntryProgress(tester, '添加人员');
-    expect(nearest, greaterThan(0));
-    // 离悬浮按钮最近的一项先弹出来，最远的一项还在等。
-    expect(nearest, greaterThan(farthest));
-    // 展开过程中按钮本身不能被顶走。
+    await tester.pumpAndSettle();
+    final menuItems = find.byType(GlassMenuItem);
+    expect(menuItems, findsNWidgets(5));
+    expect(
+      find.ancestor(
+        of: menuItems.first,
+        matching: find.byType(AdaptiveLiquidGlassLayer),
+      ),
+      findsWidgets,
+    );
     expect(
       (tester.getCenter(find.byKey(_fabToggleKey)).dy - fabBefore.dy).abs(),
       lessThan(.5),
     );
 
-    await tester.pumpAndSettle();
-    expect(_menuEntryProgress(tester, '重置考勤'), 1);
-    expect(_menuEntryProgress(tester, '添加人员'), 1);
-
-    // 展开后必须贴着右下角的按钮，不能铺满整行或跑到屏幕左边去。
-    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
-    final fabRect = tester.getRect(find.byKey(_fabToggleKey));
-    expect(fabRect.right, lessThanOrEqualTo(screen.width));
-    for (final label in ['添加人员', '复制考勤情况', '未点名全部标记为旷课', '重置考勤']) {
-      final rect = tester.getRect(find.text(label));
-      // 文本起点已过屏幕中线（项的高度短、宽度也不该被撑开）。
-      expect(
-        rect.left,
-        greaterThan(screen.width / 2),
-        reason: '$label 不应该跑到左边',
-      );
-      // 与按钮右缘基本对齐（差值只是项内部的右侧内边距）。
-      expect(fabRect.right - rect.right, inInclusiveRange(0, 40));
-    }
-
-    // 收起也要是动画：过一帧后菜单项应该还在，只是缩回去了。
-    await tester.tap(find.byKey(_fabToggleKey));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 60));
-    expect(find.text('添加人员'), findsOneWidget);
-    expect(_menuEntryProgress(tester, '重置考勤'), lessThan(1));
-
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(find.text('添加人员'), findsNothing);
   });
@@ -985,10 +948,7 @@ void main() {
       '请假': '0',
     }.entries) {
       expect(
-        find.descendant(
-          of: find.widgetWithText(FilterChip, entry.key),
-          matching: find.text(entry.value),
-        ),
+        find.text('${entry.key} ${entry.value}'),
         findsOneWidget,
         reason: '${entry.key} 筛选上应显示 ${entry.value}',
       );
@@ -1138,6 +1098,7 @@ void main() {
 
     await tester.tap(find.byTooltip('批量选择'));
     await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('glass-batch-toolbar')), findsOneWidget);
     for (final name in ['刘一', '陈二', '张三']) {
       await tester.tap(find.text(name));
       await tester.pump();
@@ -1169,21 +1130,23 @@ void main() {
     expect(saved, contains('"name":"王小明","status":"truancy"'));
   });
 
-  testWidgets('人员状态使用整行底色且异常菜单没有投影', (tester) async {
+  testWidgets('人员状态使用整行底色且异常菜单使用玻璃材质', (tester) async {
     await _pumpApp(tester);
 
     await tester.tap(find.byTooltip('选择异常考勤状态').first);
     await tester.pumpAndSettle();
-    final menu = tester.widget<Material>(
-      find.byKey(const ValueKey('attendance-exception-status-menu')),
+    final truancyOption = find.byKey(
+      const ValueKey('attendance-exception-option-truancy'),
     );
-    expect(menu.elevation, 0);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('attendance-exception-status-menu')),
-        matching: find.text('旷课'),
+    expect(truancyOption, findsOneWidget);
+    expect(
+      find.ancestor(
+        of: truancyOption,
+        matching: find.byType(AdaptiveLiquidGlassLayer),
       ),
+      findsWidgets,
     );
+    await tester.tap(truancyOption);
     await tester.pumpAndSettle();
 
     final personRow = find.ancestor(
@@ -1201,20 +1164,25 @@ void main() {
 
     await tester.tap(find.byTooltip('选择异常考勤状态').first);
     await tester.pumpAndSettle();
-    final menu = find.byKey(const ValueKey('attendance-exception-status-menu'));
-    for (final status in ['迟到', '早退', '旷课']) {
+    for (final status in [
+      AttendanceStatus.late,
+      AttendanceStatus.earlyLeave,
+      AttendanceStatus.truancy,
+    ]) {
       expect(
-        find.descendant(of: menu, matching: find.text(status)),
+        find.byKey(ValueKey('attendance-exception-option-${status.name}')),
         findsOneWidget,
       );
     }
-    expect(find.descendant(of: menu, matching: find.text('缺勤')), findsNothing);
+    expect(find.text('缺勤'), findsNothing);
 
-    await tester.tap(find.descendant(of: menu, matching: find.text('迟到')));
+    await tester.tap(
+      find.byKey(const ValueKey('attendance-exception-option-late')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('迟到'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilterChip, '异常'));
+    await tester.tap(_rosterFilter('异常'));
     await tester.pumpAndSettle();
     expect(find.text('刘一'), findsOneWidget);
 
@@ -1231,7 +1199,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byKey(const ValueKey('fab-menu-toggle')));
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
 
     await _openTab(tester, '工具箱');

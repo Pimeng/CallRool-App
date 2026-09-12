@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../models/attendance.dart';
 import '../models/person.dart';
@@ -265,12 +266,33 @@ class AttendanceExceptionStatusButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Builder(
-      builder: (buttonContext) {
+    final scheme = Theme.of(context).colorScheme;
+    return GlassMenu(
+      menuWidth: 168,
+      menuHeight: _options.length * 52 + 12,
+      menuBorderRadius: 18,
+      itemBorderRadius: 13,
+      menuPadding: const EdgeInsets.symmetric(vertical: 6),
+      autoAdjustToScreen: true,
+      quality: GlassQuality.standard,
+      glowColor: scheme.primary,
+      selectionColor: scheme.primary.withValues(alpha: .16),
+      settings: LiquidGlassSettings(
+        glassColor: scheme.surface.withValues(alpha: .14),
+        thickness: 30,
+        blur: 8,
+        refractiveIndex: 1.24,
+        lightIntensity: 1.1,
+        ambientStrength: .18,
+        fresnelStrength: 1.3,
+        glowIntensity: .75,
+        shadowElevation: 3,
+      ),
+      triggerBuilder: (buttonContext, toggleMenu) {
         if (compact) {
           return IconButton.filledTonal(
             tooltip: '选择异常考勤状态',
-            onPressed: () => _showMenu(buttonContext),
+            onPressed: toggleMenu,
             icon: Icon(status.icon, color: status.adaptiveColor(context)),
           );
         }
@@ -279,7 +301,7 @@ class AttendanceExceptionStatusButton extends StatelessWidget {
           message: '选择异常考勤状态',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => _showMenu(buttonContext),
+            onTap: toggleMenu,
             child: QuickStatusButton(
               status: status,
               active: active,
@@ -289,150 +311,34 @@ class AttendanceExceptionStatusButton extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  Future<void> _showMenu(BuildContext buttonContext) async {
-    final overlay = Overlay.of(buttonContext);
-    final overlayBox = overlay.context.findRenderObject();
-    final buttonBox = buttonContext.findRenderObject();
-    if (overlayBox is! RenderBox || buttonBox is! RenderBox) return;
-
-    final buttonTopLeftInOverlay = overlayBox.globalToLocal(
-      buttonBox.localToGlobal(Offset.zero),
-    );
-    final buttonRect = buttonTopLeftInOverlay & buttonBox.size;
-
-    const menuWidth = 168.0;
-    final menuHeight = _options.length * 48.0 + 8.0;
-    const gap = 6.0;
-    const screenPadding = 8.0;
-    final screenSize = overlayBox.size;
-    final canOpenBelow =
-        buttonRect.bottom + gap + menuHeight <=
-        screenSize.height - screenPadding;
-    final canOpenAbove = buttonRect.top - gap - menuHeight >= screenPadding;
-    final openAbove =
-        !canOpenBelow &&
-        (canOpenAbove ||
-            buttonRect.top > screenSize.height - buttonRect.bottom);
-    final menuTop =
-        (openAbove
-                ? buttonRect.top - gap - menuHeight
-                : buttonRect.bottom + gap)
-            .clamp(
-              screenPadding,
-              screenSize.height - menuHeight - screenPadding,
-            )
-            .toDouble();
-    final menuLeft = (buttonRect.right - menuWidth)
-        .clamp(screenPadding, screenSize.width - menuWidth - screenPadding)
-        .toDouble();
-
-    final selected = await showGeneralDialog<AttendanceStatus>(
-      context: buttonContext,
-      useRootNavigator: false,
-      barrierDismissible: true,
-      barrierLabel: '关闭考勤状态选择',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return SizedBox(
-          width: menuWidth,
-          height: menuHeight,
-          child: Material(
-            key: const ValueKey('attendance-exception-status-menu'),
-            elevation: 0,
-            color: Theme.of(context).colorScheme.surfaceContainer,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: Theme.of(context).dividerColor),
+      items: [
+        for (final option in _options)
+          GlassMenuItem(
+            key: ValueKey('attendance-exception-option-${option.name}'),
+            title: option.label,
+            height: 48,
+            icon: Icon(option.icon),
+            iconColor: option.adaptiveColor(context),
+            isSelected: option == status && active,
+            titleStyle: TextStyle(
+              fontWeight: option == status && active
+                  ? FontWeight.w700
+                  : FontWeight.w500,
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final option in _options)
-                    SizedBox(
-                      height: 48,
-                      child: Ink(
-                        color: option == status && active
-                            ? option.adaptiveSoftColor(context)
-                            : Colors.transparent,
-                        child: InkWell(
-                          onTap: () => Navigator.of(context).pop(option),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  option.icon,
-                                  size: 20,
-                                  color: option.adaptiveColor(context),
-                                ),
-                                const SizedBox(width: 11),
-                                Expanded(
-                                  child: Text(
-                                    option.label,
-                                    style: TextStyle(
-                                      fontWeight: option == status && active
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                if (option == status && active)
-                                  Icon(
-                                    Icons.check_rounded,
-                                    size: 19,
-                                    color: option.adaptiveColor(context),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            trailing: option == status && active
+                ? Icon(
+                    Icons.check_rounded,
+                    size: 19,
+                    color: option.adaptiveColor(context),
+                  )
+                : null,
+            onTap: () {
+              Haptic.light();
+              onSelected(option);
+            },
           ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return Stack(
-          children: [
-            Positioned(
-              left: menuLeft,
-              top: menuTop,
-              width: menuWidth,
-              child: FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: animation.drive(
-                    Tween<double>(
-                      begin: .96,
-                      end: 1,
-                    ).chain(CurveTween(curve: Curves.easeOutCubic)),
-                  ),
-                  alignment: openAbove
-                      ? Alignment.bottomRight
-                      : Alignment.topRight,
-                  child: child,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      ],
     );
-
-    if (selected != null) {
-      Haptic.light();
-      onSelected(selected);
-    }
   }
 }
 
