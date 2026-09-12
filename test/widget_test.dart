@@ -28,9 +28,8 @@ Future<void> _pumpApp(
 
 /// 切换到主页底部导航栏的某个 Tab。
 Future<void> _openTab(WidgetTester tester, String label) async {
-  await tester.tap(
-    find.descendant(of: find.byType(NavigationBar), matching: find.text(label)),
-  );
+  final index = const {'考勤': 0, '工具箱': 1, '设置': 2}[label]!;
+  await tester.tap(find.byKey(ValueKey('bottom-navigation-button-$index')));
   await tester.pumpAndSettle();
 }
 
@@ -455,18 +454,42 @@ void main() {
     expect(find.widgetWithText(FilterChip, '全部'), findsOneWidget);
   });
 
-  testWidgets('底部导航使用圆角悬浮样式', (tester) async {
+  testWidgets('底部导航使用圆角悬浮样式与整块选中效果', (tester) async {
     await _pumpApp(tester, size: const Size(430, 760));
 
-    final material = tester.widget<Material>(
-      find.byKey(const ValueKey('floating-bottom-navigation')),
+    final navigationFinder = find.byKey(
+      const ValueKey('floating-bottom-navigation'),
     );
+    final material = tester.widget<Material>(navigationFinder);
     final shape = material.shape! as RoundedRectangleBorder;
     final borderRadius = shape.borderRadius.resolve(TextDirection.ltr);
+    final selectedFinder = find.byKey(
+      const ValueKey('bottom-navigation-destination-0'),
+    );
+    final selected = tester.widget<AnimatedContainer>(selectedFinder);
+    final selectedDecoration = selected.decoration! as BoxDecoration;
+    final hoverButton = tester.widget<InkWell>(
+      find.byKey(const ValueKey('bottom-navigation-button-0')),
+    );
 
-    expect(tester.getSize(find.byType(NavigationBar)), const Size(360, 64));
+    expect(tester.getSize(navigationFinder), const Size(258, 64));
+    expect(tester.getSize(selectedFinder).height, 56);
+    expect(selectedDecoration.color, isNot(Colors.transparent));
+    expect(
+      hoverButton.overlayColor!.resolve({WidgetState.hovered}),
+      isNotNull,
+    );
     expect(borderRadius.topLeft.x, 32);
     expect(material.elevation, 3);
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    final rosterBottom = tester.getRect(find.byType(ReorderableListView)).bottom;
+    final navigationTop = tester
+        .getRect(find.byKey(const ValueKey('floating-bottom-navigation')))
+        .top;
+    expect(scaffold.extendBody, isTrue);
+    expect(scaffold.bottomNavigationBar, isNotNull);
+    expect(rosterBottom, greaterThan(navigationTop));
   });
 
   testWidgets('考勤页下滑收起底部导航并在上滑时恢复', (tester) async {

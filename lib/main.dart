@@ -416,8 +416,9 @@ class _ToolboxTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SafeArea(
     top: false,
+    bottom: false,
     child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 104),
       children: [
         const _SectionLabel('抽签'),
         Card(
@@ -479,8 +480,9 @@ class _SettingsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SafeArea(
     top: false,
+    bottom: false,
     child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 104),
       children: [
         const _SectionLabel('名单'),
         Card(
@@ -1904,6 +1906,29 @@ class _RollCallPageState extends State<RollCallPage>
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 840;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : switch (_tab) {
+            _HomeTab.attendance => _buildAttendanceTab(isWide),
+            _HomeTab.toolbox => _ToolboxTab(
+              onRandomPick: _pickRandomPerson,
+              onOpenHistory: _openAttendanceHistory,
+              historyCount: _attendanceHistory.length,
+            ),
+            _HomeTab.settings => _SettingsTab(
+              hasPeople: _people.isNotEmpty,
+              scheduleName: _wakeUpSchedule?.name,
+              lastModifiedLabel: _lastModifiedLabel,
+              hapticEnabled: _hapticEnabled,
+              onHapticChanged: _setHapticEnabled,
+              onEditRoster: _openRosterEditor,
+              onImportRoster: _openImportPage,
+              onExportRoster: _exportRoster,
+              onCustomizeCopyFormat: _openCopyFormatPage,
+              onSyncSchedule: _syncWakeUpSchedule,
+              onBackupRestore: _openBackupRestore,
+            ),
+          };
     // 考勤页没有 AppBar，状态栏图标的明暗得自己声明，否则深色主题下可能
     // 沿用系统主题的深色图标，贴在深色背景上看不见（有 AppBar 的 Tab 由它覆盖）。
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -1912,30 +1937,10 @@ class _RollCallPageState extends State<RollCallPage>
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
+        extendBody: !_selectionMode,
         appBar: _buildAppBar(),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : switch (_tab) {
-                _HomeTab.attendance => _buildAttendanceTab(isWide),
-                _HomeTab.toolbox => _ToolboxTab(
-                  onRandomPick: _pickRandomPerson,
-                  onOpenHistory: _openAttendanceHistory,
-                  historyCount: _attendanceHistory.length,
-                ),
-                _HomeTab.settings => _SettingsTab(
-                  hasPeople: _people.isNotEmpty,
-                  scheduleName: _wakeUpSchedule?.name,
-                  lastModifiedLabel: _lastModifiedLabel,
-                  hapticEnabled: _hapticEnabled,
-                  onHapticChanged: _setHapticEnabled,
-                  onEditRoster: _openRosterEditor,
-                  onImportRoster: _openImportPage,
-                  onExportRoster: _exportRoster,
-                  onCustomizeCopyFormat: _openCopyFormatPage,
-                  onSyncSchedule: _syncWakeUpSchedule,
-                  onBackupRestore: _openBackupRestore,
-                ),
-              },
+        // extendBody 让页面铺到底栏背后，避免为圆角导航留出矩形背景板。
+        body: body,
         floatingActionButton: (!_loading && _showActionButton)
             ? _buildActionMenu()
             : null,
@@ -1963,29 +1968,33 @@ class _RollCallPageState extends State<RollCallPage>
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: NavigationBar(
+      child: SizedBox(
         height: 64,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedIndex: _tab.index,
-        onDestinationSelected: _selectTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check_rounded),
-            label: '考勤',
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: [
+              _buildNavigationDestination(
+                index: _HomeTab.attendance.index,
+                icon: Icons.fact_check_outlined,
+                selectedIcon: Icons.fact_check_rounded,
+                label: '考勤',
+              ),
+              _buildNavigationDestination(
+                index: _HomeTab.toolbox.index,
+                icon: Icons.widgets_outlined,
+                selectedIcon: Icons.widgets_rounded,
+                label: '工具箱',
+              ),
+              _buildNavigationDestination(
+                index: _HomeTab.settings.index,
+                icon: Icons.settings_outlined,
+                selectedIcon: Icons.settings_rounded,
+                label: '设置',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.widgets_outlined),
-            selectedIcon: Icon(Icons.widgets_rounded),
-            label: '工具箱',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
-            label: '设置',
-          ),
-        ],
+        ),
       ),
     );
 
@@ -2006,8 +2015,84 @@ class _RollCallPageState extends State<RollCallPage>
             alignment: Alignment.bottomCenter,
             heightFactor: 1,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
+              constraints: const BoxConstraints(maxWidth: 258),
               child: bar,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationDestination({
+    required int index,
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _tab.index == index;
+    final foreground = selected
+        ? colorScheme.onSecondaryContainer
+        : colorScheme.onSurfaceVariant;
+    final shape = BorderRadius.circular(28);
+
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: Tooltip(
+          message: label,
+          child: AnimatedContainer(
+            key: ValueKey('bottom-navigation-destination-$index'),
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              color: selected
+                  ? colorScheme.secondaryContainer
+                  : Colors.transparent,
+              borderRadius: shape,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: shape,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                key: ValueKey('bottom-navigation-button-$index'),
+                borderRadius: shape,
+                onTap: () => _selectTab(index),
+                overlayColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return colorScheme.primary.withValues(alpha: 0.14);
+                  }
+                  if (states.contains(WidgetState.hovered) ||
+                      states.contains(WidgetState.focused)) {
+                    return foreground.withValues(alpha: 0.08);
+                  }
+                  return null;
+                }),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(selected ? selectedIcon : icon, color: foreground),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 12,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -2018,6 +2103,7 @@ class _RollCallPageState extends State<RollCallPage>
   Widget _buildAttendanceTab(bool isWide) {
     final horizontal = isWide ? 28.0 : 14.0;
     return SafeArea(
+      bottom: false,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1120),
