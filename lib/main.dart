@@ -773,6 +773,8 @@ class _RollCallPageState extends State<RollCallPage>
   bool _hasImportedRoster = false;
   bool _selectionMode = false;
   bool _navigationBarVisible = true;
+  bool _showFilterSelectionEdge = true;
+  int _filterInteractionGeneration = 0;
   bool _hapticEnabled = true;
   int _nextId = 1;
 
@@ -1073,6 +1075,7 @@ class _RollCallPageState extends State<RollCallPage>
   void _handleSearchChanged(String _) {
     _invalidatePeopleCache();
     setState(() => _retainVisibleSelection(notifyWhenRemoved: true));
+    _restoreRosterHeaderWhenNeeded(force: _hasSearchKeyword);
   }
 
   void _setFilter(RosterFilter filter) {
@@ -1081,6 +1084,40 @@ class _RollCallPageState extends State<RollCallPage>
     setState(() {
       _filter = filter;
       _retainVisibleSelection(notifyWhenRemoved: true);
+    });
+    _restoreRosterHeaderWhenNeeded();
+  }
+
+  void _beginFilterInteraction() {
+    _filterInteractionGeneration++;
+    if (_showFilterSelectionEdge) {
+      setState(() => _showFilterSelectionEdge = false);
+    }
+  }
+
+  void _endFilterInteraction() {
+    final generation = ++_filterInteractionGeneration;
+    Future<void>.delayed(const Duration(milliseconds: 360), () {
+      if (!mounted || generation != _filterInteractionGeneration) return;
+      setState(() => _showFilterSelectionEdge = true);
+    });
+  }
+
+  bool get _hasSearchKeyword => _searchController.text.trim().isNotEmpty;
+
+  /// 搜索时头部会改为整体吸顶；短名单也不应保留之前的滚动偏移，
+  /// 否则仅有的一两行会停在半透明筛选条背后。
+  void _restoreRosterHeaderWhenNeeded({bool force = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || (!force && _visiblePeople.length >= 5)) return;
+      final innerPosition = _innerScrollPosition;
+      if (innerPosition != null && innerPosition.hasContentDimensions) {
+        innerPosition.jumpTo(innerPosition.minScrollExtent);
+      }
+      if (_rosterScrollController.hasClients) {
+        final position = _rosterScrollController.position;
+        position.jumpTo(position.minScrollExtent);
+      }
     });
   }
 
@@ -1913,6 +1950,14 @@ class _RollCallPageState extends State<RollCallPage>
 
   Widget _buildAttendanceTab(bool isWide) {
     final horizontal = isWide ? 28.0 : 14.0;
+    final keepSearchVisible = _hasSearchKeyword;
+    final hasShortResults = _people.isNotEmpty && _visiblePeople.length < 5;
+    final filterHeader = SizedBox.expand(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: _buildFilterToolbar(isWide),
+      ),
+    );
     return SafeArea(
       bottom: false,
       child: Center(
@@ -1920,32 +1965,49 @@ class _RollCallPageState extends State<RollCallPage>
           constraints: const BoxConstraints(maxWidth: 1120),
           child: Padding(
             padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 0),
-            // 搜索框放在非固定的 header sliver 里，随手指逐帧滑走；
-            // 筛选条固定在顶部，名单在内层滚动（NestedScrollView 会注入内层控制器）。
+            // 默认仅固定筛选条；输入搜索词后把搜索框和筛选条整体固定，
+            // 让用户滚动结果时仍能继续查看、修改或清空当前关键词。
             child: NotificationListener<UserScrollNotification>(
               onNotification: _handleAttendanceScrollDirection,
               child: NestedScrollView(
                 controller: _rosterScrollController,
-                headerSliverBuilder: (context, bodyIsScrolled) => [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _buildSearchField(),
-                    ),
-                  ),
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _PinnedHeaderDelegate(
-                      height: 52,
-                      child: SizedBox.expand(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: _buildFilterToolbar(isWide),
+                physics: hasShortResults
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                headerSliverBuilder: (context, bodyIsScrolled) =>
+                    keepSearchVisible
+                    ? [
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _PinnedHeaderDelegate(
+                            height: 116,
+                            child: Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _buildSearchField(),
+                                ),
+                                Expanded(child: filterHeader),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ],
+                      ]
+                    : [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _buildSearchField(),
+                          ),
+                        ),
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _PinnedHeaderDelegate(
+                            height: 52,
+                            child: filterHeader,
+                          ),
+                        ),
+                      ],
                 body: NotificationListener<ScrollNotification>(
                   onNotification: _handleInnerScroll,
                   child: _buildRoster(isWide),
@@ -2054,6 +2116,7 @@ class _RollCallPageState extends State<RollCallPage>
     return TextField(
       controller: _searchController,
       onChanged: _handleSearchChanged,
+      onTapOutside: (_) => FocusScope.of(context).unfocus(),
       decoration: InputDecoration(
         hintText: '搜索姓名、学号、宿舍…',
         prefixIcon: const Icon(Icons.search_rounded),
@@ -2081,55 +2144,107 @@ class _RollCallPageState extends State<RollCallPage>
       (RosterFilter.issue, '异常', _countAttendanceIssues()),
       (RosterFilter.leave, '请假', _countLeaveTypes()),
     ];
-    return GlassSegmentedControl(
-      key: const ValueKey('glass-filter-toolbar'),
-      segments: [
-        for (final item in filters)
-          GlassSegment(
-            id: item.$1,
-            label: '${item.$2} ${item.$3}',
-            semanticLabel: '筛选：${item.$2}',
+    final selectedIndex = filters.indexWhere((item) => item.$1 == _filter);
+    final selectedAlignment = Alignment(
+      -1 + (selectedIndex * 2 / (filters.length - 1)),
+      0,
+    );
+    return Listener(
+      onPointerDown: (_) => _beginFilterInteraction(),
+      onPointerUp: (_) => _endFilterInteraction(),
+      onPointerCancel: (_) => _endFilterInteraction(),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          GlassSegmentedControl(
+            key: const ValueKey('glass-filter-toolbar'),
+            segments: [
+              for (final item in filters)
+                GlassSegment(
+                  id: item.$1,
+                  label: '${item.$2} ${item.$3}',
+                  semanticLabel: '筛选：${item.$2}',
+                ),
+            ],
+            selectedIndex: selectedIndex,
+            onSegmentSelected: (index) => _setFilter(filters[index].$1),
+            height: 48,
+            borderRadius: 17,
+            indicatorBorderRadius: 15,
+            padding: const EdgeInsets.all(3),
+            selectedTextStyle: TextStyle(
+              fontSize: isWide ? 13.5 : 12,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+            unselectedTextStyle: TextStyle(
+              fontSize: isWide ? 13.5 : 12,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant,
+            ),
+            backgroundColor: scheme.surface.withValues(alpha: .12),
+            indicatorColor: Colors.white.withValues(alpha: dark ? .14 : .42),
+            indicatorSettings: LiquidGlassSettings(
+              glassColor: Colors.white.withValues(alpha: .08),
+              thickness: 30,
+              blur: 5,
+              refractiveIndex: 1.2,
+              lightIntensity: 1.45,
+              ambientStrength: .24,
+              ambientRim: .42,
+              fresnelStrength: 1.55,
+              glowIntensity: 1,
+              backerColor: scheme.surfaceContainerHighest.withValues(
+                alpha: .14,
+              ),
+              shadowElevation: 1,
+            ),
+            indicatorPinchStrength: .25,
+            indicatorExpansion: const EdgeInsets.symmetric(
+              horizontal: 5,
+              vertical: 3,
+            ),
+            glowColor: scheme.primary,
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
           ),
-      ],
-      selectedIndex: filters.indexWhere((item) => item.$1 == _filter),
-      onSegmentSelected: (index) => _setFilter(filters[index].$1),
-      height: 48,
-      borderRadius: 17,
-      indicatorBorderRadius: 15,
-      padding: const EdgeInsets.all(3),
-      selectedTextStyle: TextStyle(
-        fontSize: isWide ? 13.5 : 12,
-        fontWeight: FontWeight.w700,
-        color: scheme.onSurface,
+          if (_showFilterSelectionEdge)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Align(
+                    alignment: selectedAlignment,
+                    child: FractionallySizedBox(
+                      widthFactor: 1 / filters.length,
+                      heightFactor: 1,
+                      child: DecoratedBox(
+                        key: const ValueKey('selected-filter-edge'),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(
+                            color: scheme.onSurface.withValues(
+                              alpha: dark ? .72 : .42,
+                            ),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(
+                                alpha: dark ? .10 : .18,
+                              ),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
-      unselectedTextStyle: TextStyle(
-        fontSize: isWide ? 13.5 : 12,
-        fontWeight: FontWeight.w600,
-        color: scheme.onSurfaceVariant,
-      ),
-      backgroundColor: scheme.surface.withValues(alpha: .12),
-      indicatorColor: Colors.white.withValues(alpha: dark ? .10 : .42),
-      indicatorSettings: LiquidGlassSettings(
-        glassColor: Colors.white.withValues(alpha: .06),
-        thickness: 24,
-        blur: 5,
-        refractiveIndex: 1.2,
-        lightIntensity: .85,
-        ambientStrength: .18,
-        ambientRim: .18,
-        fresnelStrength: 1.15,
-        glowIntensity: .75,
-        backerColor: scheme.surfaceContainerHighest.withValues(alpha: .14),
-        shadowElevation: 1,
-      ),
-      indicatorPinchStrength: .25,
-      indicatorExpansion: const EdgeInsets.symmetric(
-        horizontal: 5,
-        vertical: 3,
-      ),
-      glowColor: scheme.primary,
-      useOwnLayer: true,
-      quality: GlassQuality.standard,
     );
   }
 
@@ -2196,8 +2311,12 @@ class _RollCallPageState extends State<RollCallPage>
     }
     // 这两个列表不能用 _rosterScrollController，它属于外层（头部）位置，
     // 内层控制器由 NestedScrollView 通过 PrimaryScrollController 注入。
+    final shortResultPhysics = visible.length < 5
+        ? const NeverScrollableScrollPhysics()
+        : null;
     final list = _selectionMode
         ? ListView.separated(
+            physics: shortResultPhysics,
             padding: const EdgeInsets.only(bottom: 104),
             itemCount: visible.length,
             separatorBuilder: (_, _) => const SizedBox(height: 7),
@@ -2205,6 +2324,7 @@ class _RollCallPageState extends State<RollCallPage>
                 _buildPersonRow(visible[index], isWide),
           )
         : ReorderableListView.builder(
+            physics: shortResultPhysics,
             padding: const EdgeInsets.only(bottom: 104),
             itemCount: visible.length,
             buildDefaultDragHandles: false,

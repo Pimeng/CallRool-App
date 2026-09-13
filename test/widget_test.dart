@@ -1073,6 +1073,71 @@ void main() {
     expect(tester.getRect(searchField).top, closeTo(searchAtRest.top, 6));
   });
 
+  testWidgets('输入搜索词后搜索框与筛选条始终固定', (tester) async {
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'roll_call_people_v1': jsonEncode([
+          for (var i = 1; i <= 8; i++)
+            {'id': i, 'name': '测试人员$i', 'status': 'unmarked'},
+        ]),
+      },
+    );
+
+    final searchField = find.byType(TextField);
+    await tester.enterText(searchField, '测试');
+    await tester.pumpAndSettle();
+    final searchAtRest = tester.getRect(searchField);
+    final filterAtRest = tester.getRect(_rosterFilter('全部'));
+
+    final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+    await tester.dragFrom(
+      Offset(size.width / 2, size.height * .65),
+      const Offset(0, -280),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(searchField).top, closeTo(searchAtRest.top, 1));
+    expect(
+      tester.getRect(_rosterFilter('全部')).top,
+      closeTo(filterAtRest.top, 1),
+    );
+  });
+
+  testWidgets('少于五条搜索结果时名单不能滑到筛选条背后', (tester) async {
+    await _pumpApp(tester);
+
+    final searchField = find.byType(TextField);
+    await tester.enterText(searchField, '刘一');
+    await tester.pumpAndSettle();
+    final row = find.descendant(
+      of: find.byType(PersonRow),
+      matching: find.text('刘一'),
+    );
+    final rowAtRest = tester.getRect(row);
+    final filterBottom = tester.getRect(_rosterFilter('全部')).bottom;
+
+    await tester.drag(row, const Offset(0, -240));
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(row).top, closeTo(rowAtRest.top, 1));
+    expect(tester.getRect(row).top, greaterThanOrEqualTo(filterBottom));
+  });
+
+  testWidgets('点击搜索框外的空白处会取消输入焦点', (tester) async {
+    await _pumpApp(tester);
+
+    final searchField = find.byType(TextField);
+    await tester.tap(searchField);
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tapAt(const Offset(5, 300));
+    await tester.pumpAndSettle();
+
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
   testWidgets('右下角悬浮菜单收纳原顶部栏操作', (tester) async {
     await _pumpApp(tester);
 
@@ -1135,6 +1200,24 @@ void main() {
         reason: '${entry.key} 筛选上应显示 ${entry.value}',
       );
     }
+  });
+
+  testWidgets('筛选边缘静止时显示且按住拖动时隐藏', (tester) async {
+    await _pumpApp(tester);
+
+    final edge = find.byKey(const ValueKey('selected-filter-edge'));
+    expect(edge, findsOneWidget);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(_rosterFilter('未点名')),
+    );
+    await tester.pump();
+    expect(edge, findsNothing);
+
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(edge, findsOneWidget);
   });
 
   testWidgets('复制考勤时写入当前课程', (tester) async {
