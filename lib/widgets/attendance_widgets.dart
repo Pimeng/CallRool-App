@@ -290,9 +290,17 @@ class AttendanceExceptionStatusButton extends StatelessWidget {
       ),
       triggerBuilder: (buttonContext, toggleMenu) {
         if (compact) {
-          return IconButton.filledTonal(
+          return IconButton(
             tooltip: '选择异常考勤状态',
             onPressed: toggleMenu,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(42),
+              maximumSize: const Size.square(42),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+            ),
             icon: Icon(status.icon, color: status.adaptiveColor(context)),
           );
         }

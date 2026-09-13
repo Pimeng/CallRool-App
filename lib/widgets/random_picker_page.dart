@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../models/attendance.dart';
+import '../services/haptic_service.dart';
 
 /// 抽签候选人快照。
 ///
@@ -103,6 +104,7 @@ class _RandomPickerPageState extends State<RandomPickerPage>
 
   void _handleCountChanged(int value) {
     if (_spinning) return;
+    Haptic.selection();
     setState(() => _batchCount = value.clamp(1, _maxCount));
   }
 
@@ -122,6 +124,7 @@ class _RandomPickerPageState extends State<RandomPickerPage>
   ///
   /// 播放动画与不播放动画两条路径共用，保证结果处理完全一致。
   void _commitPending() {
+    Haptic.light();
     _spinning = false;
     _results = _pending;
     for (final candidate in _pending) {
@@ -135,6 +138,7 @@ class _RandomPickerPageState extends State<RandomPickerPage>
   void _startDraw() {
     final pool = List<RandomCandidate>.of(_pool);
     if (_spinning || pool.isEmpty) return;
+    Haptic.light();
     pool.shuffle(_random);
     _pending = pool.take(_effectiveCount).toList(growable: false);
 
@@ -191,6 +195,7 @@ class _RandomPickerPageState extends State<RandomPickerPage>
 
   void _resetRound() {
     if (_spinning) return;
+    Haptic.light();
     setState(() {
       _history.clear();
       _historyIds.clear();

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/attendance.dart';
 import '../models/attendance_record.dart';
 import '../models/attendance_record_filter.dart';
+import '../services/haptic_service.dart';
 
 String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
@@ -73,6 +74,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
   }
 
   void _clearFilters() {
+    Haptic.selection();
     _searchController.clear();
     setState(() => _filter = AttendanceRecordFilter.empty);
   }
@@ -85,6 +87,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
     );
     if (preset == null || !mounted) return;
     if (preset != RecordDatePreset.custom) {
+      Haptic.selection();
       setState(() => _filter = _filter.withDate(preset));
       return;
     }
@@ -99,6 +102,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
       saveText: '确定',
     );
     if (range == null || !mounted) return;
+    Haptic.selection();
     setState(
       () => _filter = _filter.withDate(RecordDatePreset.custom, custom: range),
     );
@@ -118,6 +122,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
           _CourseFilterSheet(options: options, initial: _filter.courses),
     );
     if (selected == null || !mounted) return;
+    Haptic.selection();
     setState(() => _filter = _filter.withCourses(selected));
   }
 
@@ -144,6 +149,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    Haptic.light();
     setState(() {
       _records.remove(record);
       _pruneFilter();
@@ -174,6 +180,7 @@ class _AttendanceHistoryPageState extends State<AttendanceHistoryPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    Haptic.light();
     setState(() {
       _records.clear();
       _filter = AttendanceRecordFilter.empty;
@@ -707,6 +714,7 @@ class AttendanceRecordDetailPage extends StatelessWidget {
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: _buildCopyText()));
               if (!context.mounted) return;
+              Haptic.light();
               ScaffoldMessenger.of(context)
                 ..hideCurrentSnackBar()
                 ..showSnackBar(

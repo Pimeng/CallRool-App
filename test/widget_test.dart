@@ -4,14 +4,112 @@ import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
 import 'package:callrool_app/models/attendance_record.dart';
 import 'package:callrool_app/services/attendance_history_store.dart';
+import 'package:callrool_app/services/backup_service.dart';
 import 'package:callrool_app/services/storage_keys.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
+import 'package:file_picker_platform_interface/file_picker_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _FakeFilePicker extends FilePickerPlatform {
+  PlatformFile? pickedFile;
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async => pickedFile;
+
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async => Uri.file('test-backup.json');
+}
+
+base class _MemoryPlatformFile extends PlatformFile {
+  _MemoryPlatformFile({required this.name, required this._bytes})
+    : uri = Uri.parse('memory:///$name');
+
+  @override
+  final String name;
+
+  @override
+  final Uri uri;
+
+  final Uint8List _bytes;
+
+  @override
+  Never get xFile => throw UnsupportedError('测试内存文件不提供 XFile');
+
+  @override
+  int lengthSync() => _bytes.length;
+
+  @override
+  Future<int> length() async => _bytes.length;
+
+  @override
+  Future<Uint8List> readAsBytes() async => _bytes;
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(_bytes);
+}
+
+class _HapticRecorder {
+  _HapticRecorder(this.tester) {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          calls.add(call.arguments as String?);
+        }
+        return null;
+      },
+    );
+  }
+
+  final WidgetTester tester;
+  final List<String?> calls = [];
+
+  void clear() => calls.clear();
+
+  Future<void> run(Future<void> Function() body) async {
+    try {
+      await body();
+    } finally {
+      dispose();
+    }
+  }
+
+  void dispose() {
+    debugDefaultTargetPlatformOverride = null;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
+  }
+}
 
 Future<void> _pumpApp(
   WidgetTester tester, {
@@ -61,6 +159,14 @@ Future<void> _openRandomPicker(WidgetTester tester) async {
 Future<void> _openHistory(WidgetTester tester) async {
   await _openTab(tester, '工具箱');
   await tester.tap(find.widgetWithText(ListTile, '考勤记录'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openBackupRestore(WidgetTester tester) async {
+  await _openTab(tester, '设置');
+  await tester.drag(find.byType(ListView), const Offset(0, -420));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('备份与还原'));
   await tester.pumpAndSettle();
 }
 
@@ -702,6 +808,41 @@ void main() {
     expect(find.textContaining('当前本机：10 人名单'), findsOneWidget);
   });
 
+  testWidgets('备份导出与确认还原提供震动反馈', (tester) async {
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _FakeFilePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final haptics = _HapticRecorder(tester);
+    await haptics.run(() async {
+      await _pumpApp(tester);
+      final backup = await BackupService.export();
+      final bytes = Uint8List.fromList(utf8.encode(backup));
+      picker.pickedFile = _MemoryPlatformFile(
+        name: 'backup.json',
+        bytes: bytes,
+      );
+      await _openBackupRestore(tester);
+      haptics.clear();
+
+      await tester.tap(find.text('导出为文件'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.lightImpact']);
+
+      haptics.clear();
+      await tester.tap(find.text('选择备份文件'));
+      // 导入确认弹窗显示期间页面仍保留无限进度指示器，不能 pumpAndSettle。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('用备份覆盖当前数据？'), findsOneWidget);
+      expect(haptics.calls, isEmpty);
+
+      await tester.tap(find.text('覆盖还原'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.lightImpact']);
+    });
+  });
+
   testWidgets('考勤记录支持按课程与日期多条件筛选', (tester) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day, 9);
@@ -767,6 +908,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ListTile), findsNWidgets(3));
     expect(find.textContaining('筛选后'), findsNothing);
+  });
+
+  testWidgets('考勤记录筛选、复制与确认删除提供震动反馈', (tester) async {
+    final haptics = _HapticRecorder(tester);
+    await haptics.run(() async {
+      final now = DateTime.now();
+      await _pumpApp(
+        tester,
+        initialValues: {
+          'attendance_history_v1': AttendanceHistoryStore.encode([
+            _historyRecord(id: 'a', savedAt: now, courseName: '高等数学'),
+          ]),
+        },
+      );
+      await _openHistory(tester);
+      haptics.clear();
+
+      await tester.tap(find.byKey(const ValueKey('history-course-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(CheckboxListTile, '高等数学'));
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.selectionClick']);
+
+      haptics.clear();
+      await tester.tap(find.byType(ListTile).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('复制考勤情况'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.lightImpact']);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      haptics.clear();
+      await tester.tap(find.byTooltip('删除'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, isEmpty);
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.lightImpact']);
+    });
   });
 
   testWidgets('考勤记录支持关键词搜索与无匹配提示', (tester) async {
@@ -1110,6 +1292,25 @@ void main() {
     expect(find.text('刘一、陈二、张三 将会被删除，且连同他们目前的考勤状态一并删除，是否继续？'), findsOneWidget);
   });
 
+  testWidgets('批量操作栏仅由外层提供液体玻璃效果', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byTooltip('批量选择'));
+    await tester.pumpAndSettle();
+
+    final toolbar = find.byKey(const ValueKey('glass-batch-toolbar'));
+    expect(toolbar, findsOneWidget);
+    expect(
+      find.descendant(of: toolbar, matching: find.byType(GlassIconButton)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: toolbar, matching: find.byType(IconButton)),
+      findsNWidgets(6),
+    );
+    expect(find.byTooltip('选择异常考勤状态'), findsOneWidget);
+  });
+
   testWidgets('添加人员时可以选择初始考勤状态', (tester) async {
     await _pumpApp(tester);
 
@@ -1235,6 +1436,64 @@ void main() {
     expect(find.text('公假丙'), findsNothing);
     expect(find.text('旷课丁'), findsNothing);
     expect(find.text('未点名戊'), findsNothing);
+  });
+
+  testWidgets('随机点人关键操作提供震动反馈并服从全局开关', (tester) async {
+    const peopleJson =
+        '[{"id":1,"name":"甲","status":"present"},'
+        '{"id":2,"name":"乙","status":"present"},'
+        '{"id":3,"name":"丙","status":"present"}]';
+    final haptics = _HapticRecorder(tester);
+    await haptics.run(() async {
+      await _pumpApp(
+        tester,
+        initialValues: {'roll_call_people_v1': peopleJson},
+      );
+      await _openRandomPicker(tester);
+      haptics.clear();
+
+      await tester.tap(find.byTooltip('增加人数'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('减少人数'));
+      await tester.pump();
+      expect(haptics.calls, [
+        'HapticFeedbackType.selectionClick',
+        'HapticFeedbackType.selectionClick',
+      ]);
+
+      haptics.clear();
+      await tester.tap(find.text('抽取 1 人'));
+      await _finishSpin(tester);
+      expect(haptics.calls, [
+        'HapticFeedbackType.lightImpact',
+        'HapticFeedbackType.lightImpact',
+      ]);
+
+      haptics.clear();
+      await tester.tap(find.text('重置本轮'));
+      await tester.pumpAndSettle();
+      expect(haptics.calls, ['HapticFeedbackType.lightImpact']);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置').first);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -420));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(SwitchListTile, '震动反馈'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('工具箱').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ListTile, '随机点人'));
+      await tester.pumpAndSettle();
+      haptics.clear();
+
+      await tester.tap(find.byTooltip('增加人数'));
+      await tester.pump();
+      await tester.tap(find.text('抽取 2 人'));
+      await _finishSpin(tester);
+      expect(haptics.calls, isEmpty);
+    });
   });
 
   testWidgets('抽取过程中姓名持续变化', (tester) async {

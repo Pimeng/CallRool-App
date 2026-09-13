@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../services/backup_service.dart';
+import '../services/haptic_service.dart';
 
 /// 备份与还原页：导出全部本地数据为 JSON，或从备份文件覆盖还原。
 ///
@@ -67,6 +68,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
   Future<void> _export() async {
     if (_busy) return;
+    Haptic.light();
     setState(() => _busy = true);
     try {
       final content = await BackupService.export();
@@ -131,6 +133,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       );
       if (confirmed != true || !mounted) return;
 
+      Haptic.light();
       final restored = await BackupService.restore(raw);
       if (!mounted) return;
       _toast(

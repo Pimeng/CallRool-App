@@ -2240,23 +2240,23 @@ class _RollCallPageState extends State<RollCallPage>
 
   Widget _buildBatchBar() {
     final scheme = Theme.of(context).colorScheme;
-    Widget glassAction({
+    Widget toolbarAction({
       required String tooltip,
       required VoidCallback onPressed,
       required Widget icon,
     }) {
-      return Tooltip(
-        message: tooltip,
-        child: GlassIconButton(
-          semanticLabel: tooltip,
-          onPressed: onPressed,
-          size: 42,
-          shape: GlassIconButtonShape.roundedSquare,
-          borderRadius: 13,
-          quality: GlassQuality.standard,
-          glowColor: scheme.primary,
-          icon: icon,
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(42),
+          maximumSize: const Size.square(42),
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(13),
+          ),
         ),
+        icon: icon,
       );
     }
 
@@ -2267,7 +2267,7 @@ class _RollCallPageState extends State<RollCallPage>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       backgroundColor: scheme.surface.withValues(alpha: 0.08),
       children: [
-        glassAction(
+        toolbarAction(
           tooltip: '退出批量',
           onPressed: () => setState(() {
             _selected.clear();
@@ -2282,7 +2282,7 @@ class _RollCallPageState extends State<RollCallPage>
             fontWeight: FontWeight.w700,
           ),
         ),
-        glassAction(
+        toolbarAction(
           tooltip: _allVisibleSelected ? '全不选' : '全选',
           onPressed: _selectAllVisible,
           icon: Icon(
@@ -2292,7 +2292,7 @@ class _RollCallPageState extends State<RollCallPage>
             color: scheme.onSurfaceVariant,
           ),
         ),
-        glassAction(
+        toolbarAction(
           tooltip: '反选',
           onPressed: _invertSelectionVisible,
           icon: Icon(
@@ -2315,7 +2315,7 @@ class _RollCallPageState extends State<RollCallPage>
                     compact: true,
                     onSelected: _batchSetStatus,
                   )
-                : glassAction(
+                : toolbarAction(
                     tooltip: status.label,
                     onPressed: () => _batchSetStatus(status),
                     icon: Icon(
@@ -2324,7 +2324,7 @@ class _RollCallPageState extends State<RollCallPage>
                     ),
                   ),
           ),
-        glassAction(
+        toolbarAction(
           tooltip: '删除',
           onPressed: _deleteSelected,
           icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
