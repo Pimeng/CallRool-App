@@ -309,15 +309,10 @@ void main() {
       of: find.text('刘一'),
       matching: find.byType(PersonRow),
     );
-    final rowGlass = tester.widget<LightweightLiquidGlass>(
-      find
-          .descendant(
-            of: personRow,
-            matching: find.byType(LightweightLiquidGlass),
-          )
-          .first,
+    final rowMaterial = tester.widget<Material>(
+      find.descendant(of: personRow, matching: find.byType(Material)).first,
     );
-    expect(rowGlass.settings!.glassColor, isNot(Colors.white));
+    expect(rowMaterial.color, isNot(Colors.white));
   });
 
   testWidgets('首次启动使用内置名单', (tester) async {
@@ -1580,15 +1575,10 @@ void main() {
       of: find.text('刘一'),
       matching: find.byType(PersonRow),
     );
-    final rowGlass = tester.widget<LightweightLiquidGlass>(
-      find
-          .descendant(
-            of: personRow,
-            matching: find.byType(LightweightLiquidGlass),
-          )
-          .first,
+    final rowMaterial = tester.widget<Material>(
+      find.descendant(of: personRow, matching: find.byType(Material)).first,
     );
-    expect(rowGlass.settings!.glassColor, AttendanceStatus.truancy.softColor);
+    expect(rowMaterial.color, AttendanceStatus.truancy.softColor);
   });
 
   testWidgets('异常展开选单支持迟到早退和旷课', (tester) async {

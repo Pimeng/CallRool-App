@@ -40,145 +40,131 @@ class PersonRow extends StatelessWidget {
         ? person.status.adaptiveColor(context).withValues(alpha: .55)
         : theme.dividerColor;
 
-    return LightweightLiquidGlass(
-      shape: const LiquidRoundedRectangle(borderRadius: 14),
-      settings: LiquidGlassSettings(
-        glassColor: rowColor,
-        thickness: 26,
-        blur: 7,
-        refractiveIndex: 1.18,
-        lightIntensity: 1.05,
-        ambientStrength: .22,
-        fresnelStrength: 1.15,
-        glowIntensity: .5,
-        shadowElevation: 2,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: selectionMode ? onToggleSelection : null,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 69),
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              children: [
-                if (selectionMode)
-                  Checkbox(
-                    value: selected,
-                    onChanged: (_) => onToggleSelection(),
-                  )
-                else
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: hasStatus
-                        ? colorScheme.surface.withValues(alpha: .82)
-                        : person.status.adaptiveSoftColor(context),
-                    foregroundColor: person.status.adaptiveColor(context),
-                    child: Text(
-                      person.name.characters.first,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
+    // 注意：这里刻意**不要**用 LightweightLiquidGlass。
+    // 名单是页面里唯一会滚动的大列表，每行一个液态玻璃就是一个片元着色器，
+    // 十几行同屏时每个滚动帧要跑十几遍着色器，直接掉帧（实测滑动明显卡顿）。
+    // 整行底色本来就带考勤状态语义，普通 Material 就够了。
+    return Material(
+      color: rowColor,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: selectionMode ? onToggleSelection : null,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 69),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              if (selectionMode)
+                Checkbox(value: selected, onChanged: (_) => onToggleSelection())
+              else
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: hasStatus
+                      ? colorScheme.surface.withValues(alpha: .82)
+                      : person.status.adaptiveSoftColor(context),
+                  foregroundColor: person.status.adaptiveColor(context),
+                  child: Text(
+                    person.name.characters.first,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        person.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      person.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Text(
-                            '第 $number 号',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: person.status.adaptiveSoftColor(context),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              person.status.label,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: person.status.adaptiveColor(context),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (person.fieldSummary.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
                         Text(
-                          person.fieldSummary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          '第 $number 号',
                           style: TextStyle(
                             fontSize: 11,
                             color: colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (!selectionMode)
-                  for (final status in [
-                    AttendanceStatus.present,
-                    AttendanceStatus.truancy,
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: status == AttendanceStatus.truancy
-                          ? AttendanceExceptionStatusButton(
-                              status: isAttendanceExceptionStatus(person.status)
-                                  ? person.status
-                                  : AttendanceStatus.truancy,
-                              active: isAttendanceExceptionStatus(
-                                person.status,
-                              ),
-                              showLabel: wide,
-                              onSelected: onStatus,
-                            )
-                          : QuickStatusButton(
-                              status: status,
-                              active:
-                                  status != AttendanceStatus.unmarked &&
-                                  person.status == status,
-                              showLabel: wide,
-                              label: status == AttendanceStatus.unmarked
-                                  ? '重置'
-                                  : null,
-                              icon: status == AttendanceStatus.unmarked
-                                  ? Icons.restart_alt_rounded
-                                  : null,
-                              onTap: () => onStatus(status),
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: person.status.adaptiveSoftColor(context),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            person.status.label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: person.status.adaptiveColor(context),
+                              fontWeight: FontWeight.w600,
                             ),
+                          ),
+                        ),
+                      ],
                     ),
-              ],
-            ),
+                    if (person.fieldSummary.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        person.fieldSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!selectionMode)
+                for (final status in [
+                  AttendanceStatus.present,
+                  AttendanceStatus.truancy,
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: status == AttendanceStatus.truancy
+                        ? AttendanceExceptionStatusButton(
+                            status: isAttendanceExceptionStatus(person.status)
+                                ? person.status
+                                : AttendanceStatus.truancy,
+                            active: isAttendanceExceptionStatus(person.status),
+                            showLabel: wide,
+                            onSelected: onStatus,
+                          )
+                        : QuickStatusButton(
+                            status: status,
+                            active:
+                                status != AttendanceStatus.unmarked &&
+                                person.status == status,
+                            showLabel: wide,
+                            label: status == AttendanceStatus.unmarked
+                                ? '重置'
+                                : null,
+                            icon: status == AttendanceStatus.unmarked
+                                ? Icons.restart_alt_rounded
+                                : null,
+                            onTap: () => onStatus(status),
+                          ),
+                  ),
+            ],
           ),
         ),
       ),
