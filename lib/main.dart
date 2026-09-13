@@ -460,6 +460,7 @@ class _SettingsTab extends StatelessWidget {
     required this.scheduleName,
     required this.lastModifiedLabel,
     required this.hapticEnabled,
+    required this.hapticSupported,
     required this.onHapticChanged,
     required this.onEditRoster,
     required this.onImportRoster,
@@ -473,6 +474,7 @@ class _SettingsTab extends StatelessWidget {
   final String? scheduleName;
   final String lastModifiedLabel;
   final bool hapticEnabled;
+  final bool hapticSupported;
   final ValueChanged<bool> onHapticChanged;
   final VoidCallback onEditRoster;
   final VoidCallback onImportRoster;
@@ -563,9 +565,9 @@ class _SettingsTab extends StatelessWidget {
           child: SwitchListTile(
             secondary: const Icon(Icons.vibration_rounded),
             title: const Text('震动反馈'),
-            subtitle: const Text('点按按钮、切换考勤状态时给出轻微震动'),
+            subtitle: Text(hapticSupported ? '点按按钮、切换考勤状态时给出轻微震动' : '该设备不支持震动'),
             value: hapticEnabled,
-            onChanged: onHapticChanged,
+            onChanged: hapticSupported ? onHapticChanged : null,
           ),
         ),
         const SizedBox(height: 26),
@@ -760,6 +762,8 @@ class _RollCallPageState extends State<RollCallPage>
   final _searchController = TextEditingController();
   final _rosterScrollController = ScrollController();
   final _quickImportBackend = createQuickImportBackend();
+  final _actionMenuController = GlassMenuController();
+  final _actionMenuAnchorKey = GlobalKey();
 
   final List<Person> _people = [];
   final Set<int> _selected = {};
@@ -785,6 +789,8 @@ class _RollCallPageState extends State<RollCallPage>
   WakeUpSchedule? _wakeUpSchedule;
   DateTime? _wakeUpScheduleSyncedAt;
   String? _attendanceCopyTemplate;
+  Offset? _actionMenuOpenedAt;
+  Size? _lastWindowSize;
 
   /// 自定义扩展字段的字段名（如宿舍、学号），在「编辑名单」中增删。
   List<String> _personFields = List.of(kDefaultPersonFields);
@@ -857,6 +863,8 @@ class _RollCallPageState extends State<RollCallPage>
 
   @override
   void didChangeMetrics() {
+    _syncActionMenuAfterLayout();
+
     if (!kDebugMode || !_performanceDiagnostics) return;
     final views = WidgetsBinding.instance.platformDispatcher.views;
     if (views.isEmpty) return;
@@ -868,6 +876,23 @@ class _RollCallPageState extends State<RollCallPage>
       '${logicalSize.height.toStringAsFixed(0)} '
       'dpr=${view.devicePixelRatio.toStringAsFixed(2)}',
     );
+  }
+
+  void _syncActionMenuAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_actionMenuController.isOpen) return;
+      final openedAt = _actionMenuOpenedAt;
+      final currentPosition = _actionMenuPosition;
+      if (openedAt == null || currentPosition == null) return;
+      _actionMenuController.setFollowOffset(currentPosition - openedAt);
+    });
+  }
+
+  Offset? get _actionMenuPosition {
+    final renderBox =
+        _actionMenuAnchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return null;
+    return renderBox.localToGlobal(Offset.zero);
   }
 
   Future<void> _load() async {
@@ -1816,7 +1841,12 @@ class _RollCallPageState extends State<RollCallPage>
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.sizeOf(context).width >= 840;
+    final windowSize = MediaQuery.sizeOf(context);
+    if (_lastWindowSize != windowSize) {
+      _lastWindowSize = windowSize;
+      _syncActionMenuAfterLayout();
+    }
+    final isWide = windowSize.width >= 840;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final hiddenNavigationFabShift =
@@ -1839,6 +1869,7 @@ class _RollCallPageState extends State<RollCallPage>
               scheduleName: _wakeUpSchedule?.name,
               lastModifiedLabel: _lastModifiedLabel,
               hapticEnabled: _hapticEnabled,
+              hapticSupported: Haptic.isSupported,
               onHapticChanged: _setHapticEnabled,
               onEditRoster: _openRosterEditor,
               onImportRoster: _openImportPage,
@@ -2049,6 +2080,7 @@ class _RollCallPageState extends State<RollCallPage>
     ];
     return GlassMenu(
       key: const ValueKey('glass-action-menu'),
+      controller: _actionMenuController,
       menuWidth: 220,
       menuHeight: actions.length * 52 + 12,
       menuBorderRadius: 20,
@@ -2070,20 +2102,28 @@ class _RollCallPageState extends State<RollCallPage>
         glowIntensity: .75,
         shadowElevation: 3,
       ),
-      triggerBuilder: (context, toggleMenu) => Tooltip(
-        message: '更多操作',
-        child: GlassIconButton(
-          key: const ValueKey('fab-menu-toggle'),
-          semanticLabel: '更多操作',
-          onPressed: () {
-            Haptic.light();
-            toggleMenu();
-          },
-          size: 56,
-          useOwnLayer: true,
-          quality: GlassQuality.standard,
-          glowColor: scheme.primary,
-          icon: const Icon(Icons.add_rounded),
+      triggerBuilder: (context, toggleMenu) => SizedBox(
+        key: _actionMenuAnchorKey,
+        width: 56,
+        height: 56,
+        child: Tooltip(
+          message: '更多操作',
+          child: GlassIconButton(
+            key: const ValueKey('fab-menu-toggle'),
+            semanticLabel: '更多操作',
+            onPressed: () {
+              Haptic.light();
+              if (!_actionMenuController.isOpen) {
+                _actionMenuOpenedAt = _actionMenuPosition;
+              }
+              toggleMenu();
+            },
+            size: 56,
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            glowColor: scheme.primary,
+            icon: const Icon(Icons.add_rounded),
+          ),
         ),
       ),
       items: [

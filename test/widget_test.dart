@@ -609,22 +609,51 @@ void main() {
   });
 
   testWidgets('设置页震动开关默认开启并可关闭保存', (tester) async {
-    await _pumpApp(tester);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await _pumpApp(tester);
 
-    await _openTab(tester, '设置');
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
-    await tester.pumpAndSettle();
+      await _openTab(tester, '设置');
+      await tester.drag(find.byType(ListView), const Offset(0, -420));
+      await tester.pumpAndSettle();
 
-    final switchTile = find.widgetWithText(SwitchListTile, '震动反馈');
-    expect(switchTile, findsOneWidget);
-    expect(tester.widget<SwitchListTile>(switchTile).value, isTrue);
+      final switchTile = find.widgetWithText(SwitchListTile, '震动反馈');
+      expect(switchTile, findsOneWidget);
+      expect(tester.widget<SwitchListTile>(switchTile).value, isTrue);
 
-    await tester.tap(switchTile);
-    await tester.pumpAndSettle();
-    expect(tester.widget<SwitchListTile>(switchTile).value, isFalse);
+      await tester.tap(switchTile);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(switchTile).value, isFalse);
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool(StorageKeys.hapticEnabled), isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(StorageKeys.hapticEnabled), isFalse);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('macOS 上震动开关会禁用并说明设备不支持', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await _pumpApp(tester);
+
+      await _openTab(tester, '设置');
+      await tester.drag(find.byType(ListView), const Offset(0, -420));
+      await tester.pumpAndSettle();
+
+      final switchTile = find.widgetWithText(SwitchListTile, '震动反馈');
+      expect(switchTile, findsOneWidget);
+      expect(tester.widget<SwitchListTile>(switchTile).onChanged, isNull);
+      expect(find.text('该设备不支持震动'), findsOneWidget);
+
+      await tester.tap(switchTile);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(switchTile).value, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(StorageKeys.hapticEnabled), isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('震动开关关闭状态会从存储恢复', (tester) async {
@@ -1182,6 +1211,41 @@ void main() {
     await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(find.text('添加人员'), findsNothing);
+  });
+
+  testWidgets('悬浮菜单打开期间会跟随窗口尺寸变化', (tester) async {
+    await _pumpApp(tester, size: const Size(430, 760));
+
+    await tester.tap(find.byKey(_fabToggleKey));
+    await tester.pumpAndSettle();
+    final actionFinder = find.byKey(const ValueKey('fab-menu-action-添加人员'));
+    final initialOffset =
+        tester.getCenter(actionFinder) -
+        tester.getCenter(find.byKey(_fabToggleKey));
+
+    await tester.binding.setSurfaceSize(const Size(700, 900));
+    await tester.pumpAndSettle();
+
+    expect(actionFinder, findsOneWidget);
+    final resizedOffset =
+        tester.getCenter(actionFinder) -
+        tester.getCenter(find.byKey(_fabToggleKey));
+    expect(resizedOffset.dx, closeTo(initialOffset.dx, 1));
+    expect(resizedOffset.dy, closeTo(initialOffset.dy, 1));
+
+    await tester.binding.setSurfaceSize(const Size(360, 600));
+    await tester.pumpAndSettle();
+
+    final shrunkOffset =
+        tester.getCenter(actionFinder) -
+        tester.getCenter(find.byKey(_fabToggleKey));
+    expect(shrunkOffset.dx, closeTo(initialOffset.dx, 1));
+    expect(shrunkOffset.dy, closeTo(initialOffset.dy, 1));
+    final menuRect = tester.getRect(actionFinder);
+    expect(menuRect.left, greaterThanOrEqualTo(0));
+    expect(menuRect.right, lessThanOrEqualTo(360));
+    expect(menuRect.top, greaterThanOrEqualTo(0));
+    expect(menuRect.bottom, lessThanOrEqualTo(600));
   });
 
   testWidgets('统计数量并入筛选条角标', (tester) async {
