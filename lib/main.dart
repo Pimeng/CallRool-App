@@ -15,6 +15,7 @@ import 'models/attendance_copy_template.dart';
 import 'models/attendance_record.dart';
 import 'models/course_schedule.dart';
 import 'models/person.dart';
+import 'models/roster_sort.dart';
 import 'services/attendance_history_store.dart';
 import 'services/haptic_service.dart';
 import 'services/quick_import/backend_binding.dart';
@@ -764,9 +765,13 @@ class _RollCallPageState extends State<RollCallPage>
   final List<Person> _people = [];
   final Set<int> _selected = {};
   RosterFilter _filter = RosterFilter.all;
+
+  /// 主页名单的排序方式（依据 + 方向），默认沿用用户手动拖拽的顺序。
+  RosterSort _sort = const RosterSort();
   List<_VisiblePerson>? _visiblePeopleCache;
   String _visiblePeopleCacheKeyword = '';
   RosterFilter _visiblePeopleCacheFilter = RosterFilter.all;
+  RosterSort _visiblePeopleCacheSort = const RosterSort();
   Map<AttendanceStatus, int>? _statusCountsCache;
   _HomeTab _tab = _HomeTab.attendance;
   bool _loading = true;
@@ -890,6 +895,15 @@ class _RollCallPageState extends State<RollCallPage>
     _personFields = rawFields == null
         ? List.of(kDefaultPersonFields)
         : _decodePersonFields(rawFields);
+    // 排序偏好按字段名保存，字段被删掉后要退回默认顺序，否则会整列排空。
+    final savedSort = RosterSort.decode(
+      prefs.getString(StorageKeys.rosterSort),
+    );
+    _sort =
+        savedSort.kind == RosterSortKind.field &&
+            !_personFields.contains(savedSort.fieldName)
+        ? const RosterSort()
+        : savedSort;
     _attendanceHistory
       ..clear()
       ..addAll(AttendanceHistoryStore.load(prefs));
@@ -977,6 +991,11 @@ class _RollCallPageState extends State<RollCallPage>
     await AttendanceHistoryStore.save(prefs, _attendanceHistory);
   }
 
+  Future<void> _saveSort() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageKeys.rosterSort, _sort.toStorage());
+  }
+
   /// 设置页「震动反馈」开关：立即生效并落盘。
   Future<void> _setHapticEnabled(bool value) async {
     setState(() => _hapticEnabled = value);
@@ -1021,7 +1040,8 @@ class _RollCallPageState extends State<RollCallPage>
     final cached = _visiblePeopleCache;
     if (cached != null &&
         keyword == _visiblePeopleCacheKeyword &&
-        _filter == _visiblePeopleCacheFilter) {
+        _filter == _visiblePeopleCacheFilter &&
+        _sort == _visiblePeopleCacheSort) {
       return cached;
     }
 
@@ -1040,10 +1060,22 @@ class _RollCallPageState extends State<RollCallPage>
         visible.add(_VisiblePerson(person: person, number: index + 1));
       }
     }
+    List<_VisiblePerson> ordered = visible;
+    if (_sort.kind == RosterSortKind.manual) {
+      // 默认顺序下的「反向排序」就是把用户自己拖出来的名单倒过来。
+      if (!_sort.isAscending) ordered = visible.reversed.toList();
+    } else {
+      // number 是名单里的真实序号，用作稳定排序的兜底比较值。
+      visible.sort((a, b) {
+        final result = comparePeopleBySort(a.person, b.person, _sort);
+        return result != 0 ? result : a.number.compareTo(b.number);
+      });
+    }
     _visiblePeopleCacheKeyword = keyword;
     _visiblePeopleCacheFilter = _filter;
-    _visiblePeopleCache = visible;
-    return visible;
+    _visiblePeopleCacheSort = _sort;
+    _visiblePeopleCache = ordered;
+    return ordered;
   }
 
   void _invalidatePeopleCache() {
@@ -1086,6 +1118,15 @@ class _RollCallPageState extends State<RollCallPage>
       _retainVisibleSelection(notifyWhenRemoved: true);
     });
     _restoreRosterHeaderWhenNeeded();
+  }
+
+  /// 应用新的排序方式：先落盘再重排，排序后回到名单顶部。
+  void _applySort(RosterSort sort) {
+    Haptic.selection();
+    _invalidatePeopleCache();
+    setState(() => _sort = sort);
+    _saveSort();
+    _restoreRosterHeaderWhenNeeded(force: true);
   }
 
   void _beginFilterInteraction() {
@@ -2113,24 +2154,199 @@ class _RollCallPageState extends State<RollCallPage>
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      onChanged: _handleSearchChanged,
-      onTapOutside: (_) => FocusScope.of(context).unfocus(),
-      decoration: InputDecoration(
-        hintText: '搜索姓名、学号、宿舍…',
-        prefixIcon: const Icon(Icons.search_rounded),
-        suffixIcon: _searchController.text.isEmpty
-            ? null
-            : IconButton(
-                onPressed: () {
-                  _searchController.clear();
-                  _invalidatePeopleCache();
-                  setState(() {});
-                },
-                icon: const Icon(Icons.close_rounded),
-              ),
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final field = LightweightLiquidGlass(
+      key: const ValueKey('glass-search-bar'),
+      shape: const LiquidRoundedRectangle(borderRadius: 16),
+      settings: LiquidGlassSettings(
+        glassColor: scheme.surface.withValues(alpha: dark ? .16 : .34),
+        thickness: 32,
+        blur: 9,
+        refractiveIndex: 1.22,
+        lightIntensity: 1.2,
+        ambientStrength: .2,
+        fresnelStrength: 1.25,
+        glowIntensity: .6,
+        shadowElevation: 2,
       ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: _handleSearchChanged,
+        onTapOutside: (_) => FocusScope.of(context).unfocus(),
+        style: TextStyle(color: scheme.onSurface),
+        decoration: InputDecoration(
+          hintText: '搜索姓名、学号、宿舍…',
+          hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: scheme.onSurfaceVariant,
+          ),
+          suffixIcon: _searchController.text.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: () {
+                    _searchController.clear();
+                    _invalidatePeopleCache();
+                    setState(() {});
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          // 玻璃面板自己就是底色，输入框必须完全透明才透得出玻璃。
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 13,
+          ),
+        ),
+      ),
+    );
+    return Row(
+      children: [
+        Expanded(child: field),
+        const SizedBox(width: 8),
+        _buildSortMenu(),
+      ],
+    );
+  }
+
+  /// 排序入口：与右下角加号菜单、异常状态菜单同一种锦定玻璃菜单。
+  Widget _buildSortMenu() {
+    final scheme = Theme.of(context).colorScheme;
+    final active = !_sort.isManual;
+    bool isSelected(RosterSortKind kind, String? fieldName) =>
+        _sort.kind == kind && _sort.fieldName == fieldName;
+    final options =
+        <
+          ({
+            RosterSortKind kind,
+            String? fieldName,
+            String label,
+            IconData icon,
+          })
+        >[
+          (
+            kind: RosterSortKind.manual,
+            fieldName: null,
+            label: '默认顺序',
+            icon: Icons.reorder_rounded,
+          ),
+          (
+            kind: RosterSortKind.name,
+            fieldName: null,
+            label: '姓名（拼音）',
+            icon: Icons.sort_by_alpha_rounded,
+          ),
+          for (final name in _personFields)
+            (
+              kind: RosterSortKind.field,
+              fieldName: name,
+              label: name,
+              icon: Icons.badge_outlined,
+            ),
+        ];
+    return GlassMenu(
+      key: const ValueKey('glass-sort-menu'),
+      menuWidth: 190,
+      // options + 分隔符 + 「升序」「降序」两项。
+      menuHeight: (options.length + 2) * 48 + 24,
+      menuBorderRadius: 20,
+      itemBorderRadius: 14,
+      menuPadding: const EdgeInsets.symmetric(vertical: 6),
+      autoAdjustToScreen: true,
+      quality: GlassQuality.standard,
+      glowColor: scheme.primary,
+      selectionColor: scheme.primary.withValues(alpha: .14),
+      settings: LiquidGlassSettings(
+        glassColor: scheme.surface.withValues(alpha: .14),
+        thickness: 30,
+        blur: 8,
+        refractiveIndex: 1.24,
+        lightIntensity: 1.1,
+        ambientStrength: .18,
+        fresnelStrength: 1.3,
+        glowIntensity: .75,
+        shadowElevation: 3,
+      ),
+      triggerBuilder: (context, toggleMenu) => Tooltip(
+        message: active
+            ? '排序：${_sort.label}·${_sort.isAscending ? '升序' : '降序'}'
+            : '排序方式',
+        child: GlassIconButton(
+          key: const ValueKey('sort-menu-toggle'),
+          semanticLabel: '排序方式',
+          onPressed: () {
+            Haptic.light();
+            toggleMenu();
+          },
+          size: 48,
+          shape: GlassIconButtonShape.roundedSquare,
+          borderRadius: 16,
+          useOwnLayer: true,
+          quality: GlassQuality.standard,
+          glowColor: scheme.primary,
+          icon: Icon(
+            Icons.sort_rounded,
+            color: active ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      items: [
+        for (final option in options)
+          GlassMenuItem(
+            key: ValueKey(
+              'sort-option-${option.kind.name}-${option.fieldName ?? ''}',
+            ),
+            title: option.label,
+            height: 48,
+            icon: Icon(
+              option.icon,
+              color: isSelected(option.kind, option.fieldName)
+                  ? scheme.primary
+                  : scheme.onSurfaceVariant,
+            ),
+            isSelected: isSelected(option.kind, option.fieldName),
+            trailing: isSelected(option.kind, option.fieldName)
+                ? Icon(Icons.check_rounded, size: 18, color: scheme.primary)
+                : null,
+            titleStyle: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+            ),
+            // 震动由 _applySort 统一发，避免一次点按响两下。
+            onTap: () => _applySort(
+              _sort.copyWith(kind: option.kind, fieldName: option.fieldName),
+            ),
+          ),
+        GlassMenuDivider(height: 12, color: scheme.outlineVariant),
+        // 升序 / 降序直接列出来选，不再单独摆一个切换按钮。
+        for (final direction in RosterSortDirection.values)
+          GlassMenuItem(
+            key: ValueKey('sort-direction-${direction.name}'),
+            title: direction == RosterSortDirection.ascending ? '升序' : '降序',
+            height: 48,
+            icon: Icon(
+              direction == RosterSortDirection.ascending
+                  ? Icons.arrow_upward_rounded
+                  : Icons.arrow_downward_rounded,
+              color: _sort.direction == direction
+                  ? scheme.primary
+                  : scheme.onSurfaceVariant,
+            ),
+            isSelected: _sort.direction == direction,
+            trailing: _sort.direction == direction
+                ? Icon(Icons.check_rounded, size: 18, color: scheme.primary)
+                : null,
+            titleStyle: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+            ),
+            onTap: () => _applySort(_sort.copyWith(direction: direction)),
+          ),
+      ],
     );
   }
 
@@ -2286,25 +2502,43 @@ class _RollCallPageState extends State<RollCallPage>
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '在“$_filterLabel”筛选下没有匹配人员',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              if (keyword.isNotEmpty) ...[
-                const SizedBox(height: 6),
+          child: GlassCard(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            shape: const LiquidRoundedRectangle(borderRadius: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
+            settings: LiquidGlassSettings(
+              glassColor: Theme.of(context).colorScheme.surface
+                  .withValues(alpha: .18),
+              thickness: 30,
+              blur: 9,
+              refractiveIndex: 1.22,
+              lightIntensity: 1.15,
+              ambientStrength: .2,
+              fresnelStrength: 1.25,
+              glowIntensity: .6,
+              shadowElevation: 2,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Text(
-                  '当前搜索：“$keyword”',
+                  '在“$_filterLabel”筛选下没有匹配人员',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
+                if (keyword.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '当前搜索：“$keyword”',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       );
@@ -2314,7 +2548,11 @@ class _RollCallPageState extends State<RollCallPage>
     final shortResultPhysics = visible.length < 5
         ? const NeverScrollableScrollPhysics()
         : null;
-    final list = _selectionMode
+    // 按姓名/字段排序时拖拽没有意义（会被重新排回去），只保留默认正序可拖拽。
+    final list =
+        _selectionMode ||
+            _sort.kind != RosterSortKind.manual ||
+            !_sort.isAscending
         ? ListView.separated(
             physics: shortResultPhysics,
             padding: const EdgeInsets.only(bottom: 104),

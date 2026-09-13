@@ -40,127 +40,145 @@ class PersonRow extends StatelessWidget {
         ? person.status.adaptiveColor(context).withValues(alpha: .55)
         : theme.dividerColor;
 
-    return Material(
-      color: rowColor,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: selectionMode ? onToggleSelection : null,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 69),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor),
-          ),
-          child: Row(
-            children: [
-              if (selectionMode)
-                Checkbox(value: selected, onChanged: (_) => onToggleSelection())
-              else
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: hasStatus
-                      ? colorScheme.surface.withValues(alpha: .82)
-                      : person.status.adaptiveSoftColor(context),
-                  foregroundColor: person.status.adaptiveColor(context),
-                  child: Text(
-                    person.name.characters.first,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      person.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+    return LightweightLiquidGlass(
+      shape: const LiquidRoundedRectangle(borderRadius: 14),
+      settings: LiquidGlassSettings(
+        glassColor: rowColor,
+        thickness: 26,
+        blur: 7,
+        refractiveIndex: 1.18,
+        lightIntensity: 1.05,
+        ambientStrength: .22,
+        fresnelStrength: 1.15,
+        glowIntensity: .5,
+        shadowElevation: 2,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: selectionMode ? onToggleSelection : null,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 69),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                if (selectionMode)
+                  Checkbox(
+                    value: selected,
+                    onChanged: (_) => onToggleSelection(),
+                  )
+                else
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: hasStatus
+                        ? colorScheme.surface.withValues(alpha: .82)
+                        : person.status.adaptiveSoftColor(context),
+                    foregroundColor: person.status.adaptiveColor(context),
+                    child: Text(
+                      person.name.characters.first,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        person.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            '第 $number 号',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: person.status.adaptiveSoftColor(context),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              person.status.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: person.status.adaptiveColor(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (person.fieldSummary.isNotEmpty) ...[
+                        const SizedBox(height: 3),
                         Text(
-                          '第 $number 号',
+                          person.fieldSummary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 11,
                             color: colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: person.status.adaptiveSoftColor(context),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            person.status.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: person.status.adaptiveColor(context),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
                       ],
-                    ),
-                    if (person.fieldSummary.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        person.fieldSummary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                     ],
-                  ],
-                ),
-              ),
-              if (!selectionMode)
-                for (final status in [
-                  AttendanceStatus.present,
-                  AttendanceStatus.truancy,
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: status == AttendanceStatus.truancy
-                        ? AttendanceExceptionStatusButton(
-                            status: isAttendanceExceptionStatus(person.status)
-                                ? person.status
-                                : AttendanceStatus.truancy,
-                            active: isAttendanceExceptionStatus(person.status),
-                            showLabel: wide,
-                            onSelected: onStatus,
-                          )
-                        : QuickStatusButton(
-                            status: status,
-                            active:
-                                status != AttendanceStatus.unmarked &&
-                                person.status == status,
-                            showLabel: wide,
-                            label: status == AttendanceStatus.unmarked
-                                ? '重置'
-                                : null,
-                            icon: status == AttendanceStatus.unmarked
-                                ? Icons.restart_alt_rounded
-                                : null,
-                            onTap: () => onStatus(status),
-                          ),
                   ),
-            ],
+                ),
+                if (!selectionMode)
+                  for (final status in [
+                    AttendanceStatus.present,
+                    AttendanceStatus.truancy,
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: status == AttendanceStatus.truancy
+                          ? AttendanceExceptionStatusButton(
+                              status: isAttendanceExceptionStatus(person.status)
+                                  ? person.status
+                                  : AttendanceStatus.truancy,
+                              active: isAttendanceExceptionStatus(
+                                person.status,
+                              ),
+                              showLabel: wide,
+                              onSelected: onStatus,
+                            )
+                          : QuickStatusButton(
+                              status: status,
+                              active:
+                                  status != AttendanceStatus.unmarked &&
+                                  person.status == status,
+                              showLabel: wide,
+                              label: status == AttendanceStatus.unmarked
+                                  ? '重置'
+                                  : null,
+                              icon: status == AttendanceStatus.unmarked
+                                  ? Icons.restart_alt_rounded
+                                  : null,
+                              onTap: () => onStatus(status),
+                            ),
+                    ),
+              ],
+            ),
           ),
         ),
       ),
@@ -363,41 +381,65 @@ class EmptyState extends StatelessWidget {
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(21),
+              child: GlassCard(
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                shape: const LiquidRoundedRectangle(borderRadius: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
+                settings: LiquidGlassSettings(
+                  glassColor: Theme.of(context).colorScheme.surface
+                      .withValues(alpha: .18),
+                  thickness: 30,
+                  blur: 9,
+                  refractiveIndex: 1.22,
+                  lightIntensity: 1.15,
+                  ambientStrength: .2,
+                  fresnelStrength: 1.25,
+                  glowIntensity: .6,
+                  shadowElevation: 2,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(21),
+                      ),
+                      child: Icon(
+                        Icons.format_list_bulleted_add,
+                        size: 33,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.format_list_bulleted_add,
-                      size: 33,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    const SizedBox(height: 12),
+                    const Text(
+                      '名单还是空的',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '名单还是空的',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '一行一个名字，简单直接。',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 4),
+                    Text(
+                      '一行一个名字，简单直接。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: onImport,
-                    icon: const Icon(Icons.upload_file_rounded),
-                    label: const Text('导入名单'),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: onImport,
+                      icon: const Icon(Icons.upload_file_rounded),
+                      label: const Text('导入名单'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

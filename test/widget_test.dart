@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:callrool_app/main.dart';
 import 'package:callrool_app/models/attendance.dart';
 import 'package:callrool_app/models/attendance_record.dart';
+import 'package:callrool_app/models/roster_sort.dart';
 import 'package:callrool_app/services/attendance_history_store.dart';
 import 'package:callrool_app/services/backup_service.dart';
 import 'package:callrool_app/services/storage_keys.dart';
@@ -217,6 +218,12 @@ BoxDecoration _resultPanelDecoration(WidgetTester tester) {
   return container.decoration! as BoxDecoration;
 }
 
+/// 当前名单按显示顺序排列的姓名（只包含已构建出来的行）。
+List<String> _rowNames(WidgetTester tester) => tester
+    .widgetList<PersonRow>(find.byType(PersonRow))
+    .map((row) => row.person.name)
+    .toList();
+
 Future<void> _pumpDarkApp(WidgetTester tester) async {
   tester.binding.platformDispatcher.platformBrightnessTestValue =
       Brightness.dark;
@@ -302,10 +309,15 @@ void main() {
       of: find.text('刘一'),
       matching: find.byType(PersonRow),
     );
-    final rowMaterial = tester.widget<Material>(
-      find.descendant(of: personRow, matching: find.byType(Material)).first,
+    final rowGlass = tester.widget<LightweightLiquidGlass>(
+      find
+          .descendant(
+            of: personRow,
+            matching: find.byType(LightweightLiquidGlass),
+          )
+          .first,
     );
-    expect(rowMaterial.color, isNot(Colors.white));
+    expect(rowGlass.settings!.glassColor, isNot(Colors.white));
   });
 
   testWidgets('首次启动使用内置名单', (tester) async {
@@ -322,6 +334,137 @@ void main() {
       (prefs) => prefs.getString('roll_call_people_v1'),
     );
     expect(await saved, contains('郑十'));
+  });
+
+  testWidgets('可以按姓名排序并切换升降序', (tester) async {
+    await _pumpApp(tester);
+
+    // 排序菜单与右下角加号菜单同一种锠定玻璃菜单：选中一项后自动收起。
+    Future<void> openSortMenu() async {
+      await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> chooseSort(String key) async {
+      await openSortMenu();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    // 排序与升降序都在菜单里，搜索行右侧只有一个排序按钮。
+    expect(find.byKey(const ValueKey('sort-direction-toggle')), findsNothing);
+
+    await chooseSort('sort-option-name-');
+
+    // 拼音升序：陈二 chener 排最前。
+    expect(_rowNames(tester).first, '陈二');
+
+    await chooseSort('sort-direction-descending');
+
+    // 降序：周八 zhouba 排最前。
+    expect(_rowNames(tester).first, '周八');
+
+    await chooseSort('sort-direction-ascending');
+    expect(_rowNames(tester).first, '陈二');
+
+    await chooseSort('sort-option-manual-');
+
+    // 回到默认（手动拖拽）顺序。
+    expect(_rowNames(tester).first, '刘一');
+  });
+
+  testWidgets('默认顺序下也可以选降序', (tester) async {
+    await _pumpApp(tester);
+
+    expect(_rowNames(tester).first, '刘一');
+
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-direction-descending')));
+    await tester.pumpAndSettle();
+
+    // 没有选排序依据时，降序就是把名单整个反过来（刘一 → 郑十）。
+    expect(_rowNames(tester).first, '郑十');
+    expect(find.byType(ReorderableListView), findsNothing);
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = RosterSort.decode(prefs.getString(StorageKeys.rosterSort));
+    expect(stored.direction, RosterSortDirection.descending);
+    expect(stored.kind, RosterSortKind.manual);
+  });
+
+  testWidgets('可以按自定义扩展字段排序，缺失值排在最后', (tester) async {
+    await _pumpApp(
+      tester,
+      initialValues: {
+        'roll_call_people_v1': jsonEncode([
+          {
+            'id': 1,
+            'name': '甲',
+            'status': 'unmarked',
+            'fields': {'宿舍': '302'},
+          },
+          {
+            'id': 2,
+            'name': '乙',
+            'status': 'unmarked',
+            'fields': {'宿舍': '101'},
+          },
+          {'id': 3, 'name': '丙', 'status': 'unmarked'},
+        ]),
+        'person_fields_v1': jsonEncode(['宿舍']),
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-option-field-宿舍')));
+    await tester.pumpAndSettle();
+
+    // 101 < 302，没填宿舍的丙沉到最后。
+    expect(_rowNames(tester), ['乙', '甲', '丙']);
+
+    // 降序时缺失值依旧垫底。
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-direction-descending')));
+    await tester.pumpAndSettle();
+    expect(_rowNames(tester), ['甲', '乙', '丙']);
+  });
+
+  testWidgets('排序偏好会被记住', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-option-name-')));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = RosterSort.decode(prefs.getString(StorageKeys.rosterSort));
+    expect(stored.kind, RosterSortKind.name);
+  });
+
+  testWidgets('排序激活后名单不再可拖拽重排', (tester) async {
+    await _pumpApp(tester);
+
+    expect(find.byType(ReorderableListView), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-option-name-')));
+    await tester.pumpAndSettle();
+
+    // 拖拽会被重新排回去，干脆换成普通列表。
+    expect(find.byType(ReorderableListView), findsNothing);
+    expect(find.byType(ListView), findsWidgets);
+
+    // 选回默认顺序又能拖了。
+    await tester.tap(find.byKey(const ValueKey('sort-menu-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-option-manual-')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReorderableListView), findsOneWidget);
   });
 
   testWidgets('异常与请假使用独立筛选', (tester) async {
@@ -1437,10 +1580,15 @@ void main() {
       of: find.text('刘一'),
       matching: find.byType(PersonRow),
     );
-    final rowMaterial = tester.widget<Material>(
-      find.descendant(of: personRow, matching: find.byType(Material)).first,
+    final rowGlass = tester.widget<LightweightLiquidGlass>(
+      find
+          .descendant(
+            of: personRow,
+            matching: find.byType(LightweightLiquidGlass),
+          )
+          .first,
     );
-    expect(rowMaterial.color, AttendanceStatus.truancy.softColor);
+    expect(rowGlass.settings!.glassColor, AttendanceStatus.truancy.softColor);
   });
 
   testWidgets('异常展开选单支持迟到早退和旷课', (tester) async {

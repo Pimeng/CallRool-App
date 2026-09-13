@@ -33,6 +33,11 @@ abstract final class StorageKeys {
   /// 点击控件的轻微震动反馈是否开启。
   static const hapticEnabled = 'haptic_enabled_v1';
 
+  /// 主页名单的排序方式（依据 + 升/降序）。
+  ///
+  /// 属于设备级的查看偏好，刻意不参与备份：换设备后按新设备自己的选择走。
+  static const rosterSort = 'roster_sort_v1';
+
   /// 参与备份 / 还原的键。
   ///
   /// `wakeUpAuthToken` 是账号凭据，刻意排除，避免备份文件被转发后泄露；
