@@ -40,6 +40,10 @@ class PersonRow extends StatelessWidget {
         ? person.status.adaptiveColor(context).withValues(alpha: .55)
         : theme.dividerColor;
 
+    // 注意：这里刻意**不要**用 LightweightLiquidGlass。
+    // 名单是页面里唯一会滚动的大列表，每行一个液态玻璃就是一个片元着色器，
+    // 十几行同屏时每个滚动帧要跑十几遍着色器，直接掉帧（实测滑动明显卡顿）。
+    // 整行底色本来就带考勤状态语义，普通 Material 就够了。
     return Material(
       color: rowColor,
       borderRadius: BorderRadius.circular(14),
@@ -363,41 +367,65 @@ class EmptyState extends StatelessWidget {
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(21),
+              child: GlassCard(
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                shape: const LiquidRoundedRectangle(borderRadius: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
+                settings: LiquidGlassSettings(
+                  glassColor: Theme.of(context).colorScheme.surface
+                      .withValues(alpha: .18),
+                  thickness: 30,
+                  blur: 9,
+                  refractiveIndex: 1.22,
+                  lightIntensity: 1.15,
+                  ambientStrength: .2,
+                  fresnelStrength: 1.25,
+                  glowIntensity: .6,
+                  shadowElevation: 2,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(21),
+                      ),
+                      child: Icon(
+                        Icons.format_list_bulleted_add,
+                        size: 33,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.format_list_bulleted_add,
-                      size: 33,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    const SizedBox(height: 12),
+                    const Text(
+                      '名单还是空的',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '名单还是空的',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '一行一个名字，简单直接。',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 4),
+                    Text(
+                      '一行一个名字，简单直接。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: onImport,
-                    icon: const Icon(Icons.upload_file_rounded),
-                    label: const Text('导入名单'),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: onImport,
+                      icon: const Icon(Icons.upload_file_rounded),
+                      label: const Text('导入名单'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
