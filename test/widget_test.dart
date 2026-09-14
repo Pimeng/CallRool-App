@@ -8,6 +8,7 @@ import 'package:callrool_app/services/attendance_history_store.dart';
 import 'package:callrool_app/services/backup_service.dart';
 import 'package:callrool_app/services/storage_keys.dart';
 import 'package:callrool_app/widgets/attendance_widgets.dart';
+import 'package:excel_plus/excel_plus.dart';
 import 'package:file_picker_platform_interface/file_picker_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeFilePicker extends FilePickerPlatform {
   PlatformFile? pickedFile;
+  List<String>? lastAllowedExtensions;
 
   @override
   Future<PlatformFile?> pickFile({
@@ -32,7 +34,10 @@ class _FakeFilePicker extends FilePickerPlatform {
     WindowsOptions windowsOptions = const WindowsOptions(),
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
-  }) async => pickedFile;
+  }) async {
+    lastAllowedExtensions = allowedExtensions;
+    return pickedFile;
+  }
 
   @override
   Future<Uri?> saveFile({
@@ -1493,11 +1498,15 @@ void main() {
     await tester.tap(find.text('导入名单'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(AppBar, '导入名单'), findsOneWidget);
-    expect(find.byTooltip('选择 TXT 文件'), findsOneWidget);
-    expect(find.text('选择 TXT 文件'), findsNothing);
+    expect(find.byTooltip('选择 TXT、XLS 或 XLSX 文件'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, '新同学');
     await tester.pumpAndSettle();
 
+    expect(find.text('预览 1 人名单'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '替换现有'), findsNothing);
+    await tester.tap(find.text('预览 1 人名单'));
+    await tester.pumpAndSettle();
+    expect(find.text('即将导入 1 人'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '替换现有'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '追加'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '替换现有'));
@@ -1509,6 +1518,95 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('roll_call_has_imported_v1'), isTrue);
+  });
+
+  testWidgets('选择 XLSX 后直接展示识别到的名单预览', (tester) async {
+    final workbook = Excel.createExcel();
+    final sheet = workbook['Sheet1'];
+    sheet.appendRow([TextCellValue('新生花名册')]);
+    sheet.appendRow([
+      TextCellValue('序号'),
+      TextCellValue('姓名'),
+      TextCellValue('性别'),
+      TextCellValue('学生电话'),
+    ]);
+    sheet.appendRow([
+      TextCellValue('例'),
+      TextCellValue('示例同学'),
+      TextCellValue('男'),
+      TextCellValue('13000000000'),
+    ]);
+    sheet.appendRow([
+      IntCellValue(1),
+      TextCellValue('张三'),
+      TextCellValue('男'),
+      TextCellValue('13100000000'),
+    ]);
+    sheet.appendRow([
+      null,
+      TextCellValue('李四'),
+      TextCellValue('女'),
+      TextCellValue('13200000000'),
+    ]);
+    final picker = _FakeFilePicker()
+      ..pickedFile = _MemoryPlatformFile(
+        name: '新生花名册.xlsx',
+        bytes: Uint8List.fromList(workbook.save()!),
+      );
+    final originalPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    await _pumpApp(tester);
+
+    await _openTab(tester, '设置');
+    await tester.tap(find.text('导入名单'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('选择 TXT、XLS 或 XLSX 文件'));
+    await tester.pump();
+    for (
+      var attempt = 0;
+      attempt < 40 && find.text('即将导入 2 人').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+
+    expect(picker.lastAllowedExtensions, ['txt', 'xls', 'xlsx']);
+    expect(find.text('即将导入 2 人'), findsOneWidget);
+    expect(find.text('Sheet1，第 2 行为表头'), findsOneWidget);
+    expect(find.text('自定义导入字段'), findsOneWidget);
+    expect(find.text('姓名固定导入，已选择 2/2 个扩展字段'), findsOneWidget);
+    expect(find.text('张三'), findsOneWidget);
+    expect(find.text('李四'), findsOneWidget);
+    expect(find.textContaining('性别 男'), findsWidgets);
+    expect(find.text('示例同学'), findsNothing);
+    expect(find.text('已忽略 1 个空行或示例行'), findsOneWidget);
+
+    await tester.tap(find.text('自定义导入字段'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择导入字段'), findsOneWidget);
+    await tester.tap(find.widgetWithText(CheckboxListTile, '性别'));
+    await tester.pump();
+    expect(find.text('姓名固定导入，已选择 1/2 个扩展字段'), findsOneWidget);
+    await tester.tap(find.text('应用字段选择'));
+    await tester.pumpAndSettle();
+    expect(find.text('姓名固定导入，已选择 1/2 个扩展字段'), findsOneWidget);
+    expect(find.textContaining('性别 男'), findsNothing);
+    expect(find.textContaining('学生电话 13100000000'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, '替换现有'));
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('roll_call_people_v1'), isNot(contains('"性别"')));
+    expect(
+      prefs.getString('roll_call_people_v1'),
+      contains('"学生电话":"13100000000"'),
+    );
+    expect(prefs.getString(StorageKeys.personFields), isNot(contains('性别')));
+    expect(prefs.getString(StorageKeys.personFields), contains('学生电话'));
   });
 
   testWidgets('已有自定义名单时追加仍为主操作且替换需要确认', (tester) async {
@@ -1526,6 +1624,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新同学');
     await tester.pumpAndSettle();
+    await tester.tap(find.text('预览 1 人名单'));
+    await tester.pumpAndSettle();
 
     expect(find.widgetWithText(FilledButton, '追加'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '替换现有'), findsOneWidget);
@@ -1533,9 +1633,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('确认替换现有名单？'), findsOneWidget);
-    await tester.tap(find.text('返回修改'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('返回修改'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.widgetWithText(AppBar, '导入名单'), findsOneWidget);
+    expect(find.text('即将导入 1 人'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '返回修改'));
+    await tester.pumpAndSettle();
     final importField = tester.widget<TextField>(find.byType(TextField).last);
     expect(importField.controller!.text, '新同学');
   });
@@ -1548,6 +1656,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '新同学');
     await tester.pump();
+    await tester.tap(find.text('预览 1 人名单'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, '追加'));
 
     await tester.pump(const Duration(milliseconds: 100));

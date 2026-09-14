@@ -19,6 +19,7 @@ import 'models/roster_sort.dart';
 import 'services/attendance_history_store.dart';
 import 'services/haptic_service.dart';
 import 'services/quick_import/backend_binding.dart';
+import 'services/roster_import_service.dart';
 import 'services/storage_keys.dart';
 import 'theme/app_theme.dart';
 import 'widgets/attendance_history_page.dart';
@@ -220,7 +221,11 @@ class _SaveRecordDialogState extends State<_SaveRecordDialog> {
   }
 }
 
-typedef _ImportRosterResult = ({List<String> names, bool replace});
+typedef _ImportRosterResult = ({
+  List<RosterImportPerson> people,
+  List<String> fieldNames,
+  bool replace,
+});
 
 class _ImportRosterPage extends StatefulWidget {
   const _ImportRosterPage({
@@ -237,7 +242,10 @@ class _ImportRosterPage extends StatefulWidget {
 
 class _ImportRosterPageState extends State<_ImportRosterPage> {
   final _controller = TextEditingController();
-  List<String> _names = [];
+  RosterImportDraft _draft = parseRosterText('');
+  Set<String> _selectedFieldNames = {};
+  bool _showPreview = false;
+  bool _loadingFile = false;
 
   @override
   void dispose() {
@@ -245,33 +253,164 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
     super.dispose();
   }
 
-  List<String> _parseNames(String text) {
-    final seen = <String>{};
-    return const LineSplitter()
-        .convert(text.replaceAll('\r', ''))
-        .map((name) => name.trim())
-        .where((name) => name.isNotEmpty && seen.add(name.toLowerCase()))
-        .toList();
+  void _updateText(String value) {
+    setState(() {
+      _draft = parseRosterText(value);
+      _selectedFieldNames = {};
+      _showPreview = false;
+    });
   }
 
   Future<void> _pickFile() async {
     final picked = await FilePicker.pickFile(
       dialogTitle: '选择名单文件',
       type: FileType.custom,
-      allowedExtensions: const ['txt'],
+      allowedExtensions: const ['txt', 'xls', 'xlsx'],
     );
     if (picked == null || !mounted) return;
-    final value = utf8.decode(await picked.readAsBytes(), allowMalformed: true);
-    if (!mounted) return;
-    _controller.text = value;
-    setState(() => _names = _parseNames(value));
+    setState(() => _loadingFile = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      if (bytes.length > 10 * 1024 * 1024) {
+        throw const FormatException('名单文件不能超过 10 MB');
+      }
+      final fileName = picked.name;
+      final draft = await compute(parseRosterFileRequest, (fileName, bytes));
+      if (!mounted) return;
+      _controller.text = draft.names.join('\n');
+      setState(() {
+        _draft = draft;
+        _selectedFieldNames = draft.fieldNames.toSet();
+        _showPreview = true;
+      });
+    } on FormatException catch (error) {
+      if (mounted) _showError(error.message);
+    } catch (_) {
+      if (mounted) _showError('无法读取这个名单文件，请确认文件没有损坏');
+    } finally {
+      if (mounted) setState(() => _loadingFile = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _finish({required bool replace}) {
+    final selectedFieldNames = _draft.fieldNames
+        .where(_selectedFieldNames.contains)
+        .toList(growable: false);
     Navigator.pop(context, (
-      names: List<String>.unmodifiable(_names),
+      people: List<RosterImportPerson>.unmodifiable(
+        _draft.people.map(
+          (person) => RosterImportPerson(
+            name: person.name,
+            fields: Map.unmodifiable({
+              for (final entry in person.fields.entries)
+                if (_selectedFieldNames.contains(entry.key))
+                  entry.key: entry.value,
+            }),
+          ),
+        ),
+      ),
+      fieldNames: List<String>.unmodifiable(selectedFieldNames),
       replace: replace,
     ));
+  }
+
+  Future<void> _chooseImportFields() async {
+    final localSelection = Set<String>.of(_selectedFieldNames);
+    final selected = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => FractionallySizedBox(
+          heightFactor: 0.82,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '选择导入字段',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            Text(
+                              '姓名固定导入，已选择 ${localSelection.length}/${_draft.fieldNames.length} 个扩展字段',
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setSheetState(
+                          () => localSelection
+                            ..clear()
+                            ..addAll(_draft.fieldNames),
+                        ),
+                        child: const Text('全选'),
+                      ),
+                      TextButton(
+                        onPressed: () => setSheetState(localSelection.clear),
+                        child: const Text('清空'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _draft.fieldNames.length,
+                    itemBuilder: (context, index) {
+                      final fieldName = _draft.fieldNames[index];
+                      return CheckboxListTile(
+                        value: localSelection.contains(fieldName),
+                        title: Text(fieldName),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (checked) => setSheetState(() {
+                          if (checked ?? false) {
+                            localSelection.add(fieldName);
+                          } else {
+                            localSelection.remove(fieldName);
+                          }
+                        }),
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(
+                      sheetContext,
+                      Set<String>.of(localSelection),
+                    ),
+                    child: const Text('应用字段选择'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _selectedFieldNames = selected);
+    }
   }
 
   Future<void> _replace() async {
@@ -284,7 +423,7 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('确认替换现有名单？'),
         content: Text(
-          '现有 ${widget.existingCount} 人及其考勤状态将被删除，并替换为 ${_names.length} 人。此操作无法撤销。',
+          '现有 ${widget.existingCount} 人及其考勤状态将被删除，并替换为 ${_draft.names.length} 人。此操作无法撤销。',
         ),
         actions: [
           TextButton(
@@ -311,9 +450,14 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
       title: const Text('导入名单'),
       actions: [
         IconButton(
-          tooltip: '选择 TXT 文件',
-          onPressed: _pickFile,
-          icon: const Icon(Icons.upload_file_rounded),
+          tooltip: '选择 TXT、XLS 或 XLSX 文件',
+          onPressed: _loadingFile ? null : _pickFile,
+          icon: _loadingFile
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.upload_file_rounded),
         ),
         const SizedBox(width: 4),
       ],
@@ -324,41 +468,9 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(child: Text('一行一个名字，自动忽略空行和重复姓名。')),
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_names.length} 人',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    autofocus: true,
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      hintText: '张三\n李四\n王五',
-                      alignLabelWithHint: true,
-                    ),
-                    onChanged: (value) =>
-                        setState(() => _names = _parseNames(value)),
-                  ),
-                ),
-              ],
-            ),
+            child: _showPreview
+                ? _buildPreview(context)
+                : _buildEditor(context),
           ),
         ),
       ),
@@ -369,40 +481,180 @@ class _ImportRosterPageState extends State<_ImportRosterPage> {
         color: Theme.of(context).colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: widget.isFirstImport
-                    ? OutlinedButton(
-                        onPressed: _names.isEmpty
-                            ? null
-                            : () => _finish(replace: false),
-                        child: const Text('追加'),
-                      )
-                    : OutlinedButton(
-                        onPressed: _names.isEmpty ? null : _replace,
-                        child: const Text('替换现有'),
-                      ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: widget.isFirstImport
-                    ? FilledButton(
-                        onPressed: _names.isEmpty ? null : _replace,
-                        child: const Text('替换现有'),
-                      )
-                    : FilledButton(
-                        onPressed: _names.isEmpty
-                            ? null
-                            : () => _finish(replace: false),
-                        child: const Text('追加'),
-                      ),
-              ),
-            ],
-          ),
+          child: _showPreview
+              ? _buildImportActions()
+              : SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _draft.names.isEmpty
+                        ? null
+                        : () => setState(() => _showPreview = true),
+                    icon: const Icon(Icons.preview_rounded),
+                    label: Text('预览 ${_draft.names.length} 人名单'),
+                  ),
+                ),
         ),
       ),
     ),
+  );
+
+  Widget _buildEditor(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          const Expanded(child: Text('粘贴一行一个名字，或选择 TXT、XLS、XLSX 文件。')),
+          const SizedBox(width: 12),
+          Text(
+            '${_draft.names.length} 人',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Expanded(
+        child: TextField(
+          controller: _controller,
+          autofocus: true,
+          expands: true,
+          minLines: null,
+          maxLines: null,
+          textAlignVertical: TextAlignVertical.top,
+          decoration: const InputDecoration(
+            hintText: '张三\n李四\n王五',
+            alignLabelWithHint: true,
+          ),
+          onChanged: _updateText,
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildPreview(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '即将导入 ${_draft.names.length} 人',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _draft.sourceDescription,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => setState(() => _showPreview = false),
+            icon: const Icon(Icons.edit_rounded, size: 18),
+            label: const Text('返回修改'),
+          ),
+        ],
+      ),
+      if (_draft.duplicateCount > 0 || _draft.ignoredRowCount > 0) ...[
+        const SizedBox(height: 8),
+        Text(
+          [
+            if (_draft.duplicateCount > 0) '已忽略 ${_draft.duplicateCount} 个重复姓名',
+            if (_draft.ignoredRowCount > 0)
+              '已忽略 ${_draft.ignoredRowCount} 个空行或示例行',
+          ].join('，'),
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+      if (_draft.fieldNames.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.tune_rounded),
+            title: const Text('自定义导入字段'),
+            subtitle: Text(
+              '姓名固定导入，已选择 ${_selectedFieldNames.length}/${_draft.fieldNames.length} 个扩展字段',
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _chooseImportFields,
+          ),
+        ),
+      ],
+      const SizedBox(height: 10),
+      Expanded(
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          margin: EdgeInsets.zero,
+          child: ListView.separated(
+            itemCount: _draft.names.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final person = _draft.people[index];
+              final fieldSummary = person.fields.entries
+                  .where((entry) => _selectedFieldNames.contains(entry.key))
+                  .map((entry) => '${entry.key} ${entry.value}')
+                  .join(' · ');
+              return ListTile(
+                dense: true,
+                leading: SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${index + 1}',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                title: Text(person.name),
+                subtitle: fieldSummary.isEmpty
+                    ? null
+                    : Text(
+                        fieldSummary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              );
+            },
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildImportActions() => Row(
+    children: [
+      Expanded(
+        child: widget.isFirstImport
+            ? OutlinedButton(
+                onPressed: () => _finish(replace: false),
+                child: const Text('追加'),
+              )
+            : OutlinedButton(onPressed: _replace, child: const Text('替换现有')),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: widget.isFirstImport
+            ? FilledButton(onPressed: _replace, child: const Text('替换现有'))
+            : FilledButton(
+                onPressed: () => _finish(replace: false),
+                child: const Text('追加'),
+              ),
+      ),
+    ],
   );
 }
 
@@ -1438,7 +1690,7 @@ class _RollCallPageState extends State<RollCallPage>
         ),
       ),
     );
-    if (!mounted || result == null || result.names.isEmpty) return;
+    if (!mounted || result == null || result.people.isEmpty) return;
     _invalidatePeopleCache();
     setState(() {
       if (result.replace) {
@@ -1448,14 +1700,24 @@ class _RollCallPageState extends State<RollCallPage>
       final existing = _people
           .map((person) => person.name.toLowerCase())
           .toSet();
-      for (final name in result.names) {
-        if (existing.add(name.toLowerCase())) {
-          _people.add(Person(id: _nextId++, name: name));
+      for (final imported in result.people) {
+        if (existing.add(imported.name.toLowerCase())) {
+          _people.add(
+            Person(
+              id: _nextId++,
+              name: imported.name,
+              fields: Map.of(imported.fields),
+            ),
+          );
         }
       }
+      _personFields = normalizePersonFields([
+        ..._personFields,
+        ...result.fieldNames,
+      ]);
     });
     _hasImportedRoster = true;
-    await _save();
+    await Future.wait([_save(), _savePersonFields()]);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hasImportedRosterKey, true);
     _toast('名单已导入，共 ${_people.length} 人');
