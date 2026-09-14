@@ -18,7 +18,7 @@
 - 课程关联：可同步 WakeUp 分享课程表，复制考勤汇总时自动附带当前课程、教师、教室和时间。
 - 便捷收尾：支持将所有尚未点名的人员一次性标记为缺勤。
 - 备份与还原：可将名单、考勤状态、扩展字段、考勤记录和课程信息导出为 JSON，换机后一键恢复。
-- 响应式界面：适配窄屏和宽屏窗口，适合 Android 与 Windows 使用。
+- 响应式界面：适配窄屏和宽屏窗口，适合 Android、Windows 与 macOS 使用。
 
 ## 默认行为与数据保存
 
@@ -44,6 +44,7 @@
 - Flutter SDK，且 Dart SDK 满足 `pubspec.yaml` 中的约束：`^3.13.2`
 - Android 开发环境（运行 Android 版本时）
 - Windows 桌面开发环境（运行 Windows 版本时）
+- 完整版 Xcode（运行或构建 macOS 版本时；仅安装 Command Line Tools 不够）
 
 查看本机 Flutter 环境：
 
@@ -81,7 +82,23 @@ flutter build apk --release
 
 # 构建 Windows 应用
 flutter build windows --release
+
+# 构建 macOS 应用
+flutter build macos --release
 ```
+
+### macOS
+
+在 macOS 上确认 Flutter 能识别本机桌面设备后，即可直接运行或构建：
+
+```bash
+flutter devices
+flutter run -d macos
+flutter build macos --release
+```
+
+构建产物位于 `build/macos/Build/Products/Release/callrool_app.app`。当前仓库提供基础的
+macOS build/run 支持，但不包含 Developer ID 签名、Apple 公证或 DMG 打包流程。
 
 ## 导入名单格式
 

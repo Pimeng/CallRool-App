@@ -14,20 +14,21 @@ abstract final class Haptic {
 
   static void setEnabled(bool value) => _enabled = value;
 
-  static bool get _supported =>
+  /// 当前平台是否提供震动反馈能力。
+  static bool get isSupported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
   /// 轻点反馈：按钮、开关、状态切换等常规操作。
   static void light() {
-    if (!_enabled || !_supported) return;
+    if (!_enabled || !isSupported) return;
     HapticFeedback.lightImpact();
   }
 
   /// 选择反馈：切换 Tab、筛选、勾选等轻量选择，比 [light] 更轻微。
   static void selection() {
-    if (!_enabled || !_supported) return;
+    if (!_enabled || !isSupported) return;
     HapticFeedback.selectionClick();
   }
 }
