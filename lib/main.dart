@@ -1013,6 +1013,7 @@ class _RollCallPageState extends State<RollCallPage>
     '郑十',
   ];
   final _searchController = TextEditingController();
+  final _searchFieldKey = GlobalKey();
   final _rosterScrollController = ScrollController();
   final _quickImportBackend = createQuickImportBackend();
   final _actionMenuController = GlassMenuController();
@@ -1643,42 +1644,77 @@ class _RollCallPageState extends State<RollCallPage>
     await _save();
   }
 
-  Future<void> _markUnmarkedTruancy() async {
+  Future<void> _markUnmarkedAsStatus() async {
     final unmarkedCount = _count(AttendanceStatus.unmarked);
     if (unmarkedCount == 0) {
       _toast('没有未点名人员');
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final options = AttendanceStatus.values
+        .where((status) => status != AttendanceStatus.unmarked)
+        .toList(growable: false);
+
+    final selected = await showModalBottomSheet<AttendanceStatus>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('将未点名人员标记为旷课？'),
-        content: Text('共 $unmarkedCount 人，已有考勤状态的人员不会改变。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '标记未点名人员',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '共 $unmarkedCount 人，选择要标记的状态，已有考勤状态的人员不会改变。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (final status in options)
+                ListTile(
+                  key: ValueKey('mark-unmarked-option-${status.name}'),
+                  leading: Icon(
+                    status.icon,
+                    color: status.adaptiveColor(context),
+                  ),
+                  title: Text(status.label),
+                  onTap: () {
+                    Haptic.light();
+                    Navigator.pop(sheetContext, status);
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认标记'),
-          ),
-        ],
+        ),
       ),
     );
-    if (confirmed != true) return;
+    if (selected == null || !mounted) return;
 
     _invalidatePeopleCache();
     setState(() {
       for (final person in _people) {
         if (person.status == AttendanceStatus.unmarked) {
-          person.status = AttendanceStatus.truancy;
+          person.status = selected;
         }
       }
     });
     await _save();
-    _toast('已将 $unmarkedCount 人标记为旷课');
+    _toast('已将 $unmarkedCount 人标记为${selected.label}');
   }
 
   Future<void> _openImportPage() async {
@@ -2308,40 +2344,30 @@ class _RollCallPageState extends State<RollCallPage>
                 physics: hasShortResults
                     ? const NeverScrollableScrollPhysics()
                     : null,
-                headerSliverBuilder: (context, bodyIsScrolled) =>
-                    keepSearchVisible
-                    ? [
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _PinnedHeaderDelegate(
-                            height: 116,
-                            child: Column(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _buildSearchField(),
-                                ),
-                                Expanded(child: filterHeader),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ]
-                    : [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _buildSearchField(),
-                          ),
-                        ),
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _PinnedHeaderDelegate(
-                            height: 52,
-                            child: filterHeader,
-                          ),
-                        ),
-                      ],
+                // 搜索框与筛选条始终保持「两个 SliverPersistentHeader」的结构，
+                // 只在输入关键词后把搜索框改为 pinned。若这里根据关键词切换成
+                // SliverToBoxAdapter / 合并成单个 header，sliver 类型一变，视口
+                // 就会重建整棵子树，输入框的焦点随之丢失——表现为输入一个字符
+                // 后输入法被收起。
+                headerSliverBuilder: (context, bodyIsScrolled) => [
+                  SliverPersistentHeader(
+                    pinned: keepSearchVisible,
+                    delegate: _PinnedHeaderDelegate(
+                      height: 56,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _buildSearchField(),
+                      ),
+                    ),
+                  ),
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _PinnedHeaderDelegate(
+                      height: 52,
+                      child: filterHeader,
+                    ),
+                  ),
+                ],
                 body: NotificationListener<ScrollNotification>(
                   onNotification: _handleInnerScroll,
                   child: _buildRoster(isWide),
@@ -2372,8 +2398,8 @@ class _RollCallPageState extends State<RollCallPage>
       ),
       (
         icon: Icons.assignment_late_outlined,
-        label: '未点名标记旷课',
-        onTap: unmarked == 0 ? null : _markUnmarkedTruancy,
+        label: '批量标记未点名',
+        onTap: unmarked == 0 ? null : _markUnmarkedAsStatus,
       ),
       (
         icon: Icons.restart_alt_rounded,
@@ -2507,6 +2533,7 @@ class _RollCallPageState extends State<RollCallPage>
       ),
     );
     return Row(
+      key: _searchFieldKey,
       children: [
         Expanded(child: field),
         const SizedBox(width: 8),

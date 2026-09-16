@@ -687,7 +687,7 @@ void main() {
     expect(find.textContaining('上次修改：'), findsOneWidget);
     expect(find.text('随机点人'), findsNothing);
     expect(find.text('复制考勤情况'), findsNothing);
-    expect(find.text('未点名标记旷课'), findsNothing);
+    expect(find.text('批量标记未点名'), findsNothing);
     expect(find.text('重置考勤'), findsNothing);
 
     await _openTab(tester, '考勤');
@@ -1310,6 +1310,43 @@ void main() {
     expect(tester.testTextInput.isVisible, isFalse);
   });
 
+  testWidgets('输入第一个字符后搜索框不会丢失焦点', (tester) async {
+    await _pumpApp(tester);
+
+    final searchField = find.byType(TextField);
+    await tester.tap(searchField);
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    // 输入一个字符会让搜索框从「随滚动」切到「固定」，重建时不能把输入
+    // 框的 State 一起丢掉，否则输入法会立刻收起。
+    await tester.enterText(searchField, '刘');
+    await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.enterText(searchField, '刘一');
+    await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('批量标记未点名可选择旷课以外的状态', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(find.byKey(_fabToggleKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量标记未点名'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('标记未点名人员'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('mark-unmarked-option-leave')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已将 10 人标记为公假'), findsOneWidget);
+    expect(find.text('公假'), findsWidgets);
+  });
+
   testWidgets('右下角悬浮菜单收纳原顶部栏操作', (tester) async {
     await _pumpApp(tester);
 
@@ -1322,7 +1359,7 @@ void main() {
     expect(find.byKey(const ValueKey('glass-action-menu')), findsOneWidget);
     expect(find.text('添加人员'), findsOneWidget);
     expect(find.text('复制考勤情况'), findsOneWidget);
-    expect(find.text('未点名标记旷课'), findsOneWidget);
+    expect(find.text('批量标记未点名'), findsOneWidget);
     expect(find.text('重置考勤'), findsOneWidget);
 
     await tester.tapAt(const Offset(4, 4));
