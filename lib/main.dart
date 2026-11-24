@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -1079,8 +1079,48 @@ class _RollCallPageState extends State<RollCallPage>
       _tab = next;
       _navigationBarVisible = true;
     });
+    // 离开考勤页后，内层名单会被销毁重建，之前缓存的内层滚动位置随之失效。
+    // 清空引用，避免返回考勤页时对已废弃的 NestedScrollView 位置做 jumpTo 而崩溃。
+    if (next != _HomeTab.attendance) _innerScrollPosition = null;
     // 已经在考勤页时再点一次「考勤」，回到名单顶部（搜索框也顺带露出来）。
     if (reselected && next == _HomeTab.attendance) _scrollToTop();
+  }
+
+  /// 页面级左右滑动：先在考勤页的筛选标签间切换，到两端再切换 Tab。
+  void _handleHorizontalSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    // 手势竞技场已把纵向滚动交给列表，这里只会收到横向为主的滑动，
+    // 再用一个速度阈值过滤掉细微抖动。
+    if (velocity.abs() < 200) return;
+    // 向左滑（内容前进）取 next，向右滑（内容后退）取上一个。
+    _stepNavigation(next: velocity < 0);
+  }
+
+  /// 把「考勤页的筛选标签 + 工具箱 + 设置」连成一条虚拟序列，
+  /// 左右滑动就是在这条序列里前后移动一格。
+  void _stepNavigation({required bool next}) {
+    final filters = RosterFilter.values;
+    final current = switch (_tab) {
+      _HomeTab.attendance => _filter.index,
+      _HomeTab.toolbox => filters.length,
+      _HomeTab.settings => filters.length + 1,
+    };
+    final total = filters.length + 2;
+    final target = (current + (next ? 1 : -1)).clamp(0, total - 1);
+    if (target == current) return;
+    if (target < filters.length) {
+      // 落在考勤页：必要时先切回考勤 Tab，再应用对应筛选标签。
+      if (_tab != _HomeTab.attendance) {
+        setState(() {
+          _tab = _HomeTab.attendance;
+          _navigationBarVisible = true;
+        });
+      }
+      _setFilter(filters[target]);
+    } else {
+      // 落在工具箱（1）或设置（2）。
+      _selectTab(target - filters.length + 1);
+    }
   }
 
   void _scrollToTop() {
@@ -2196,28 +2236,33 @@ class _RollCallPageState extends State<RollCallPage>
         : 0.0;
     final body = _loading
         ? const Center(child: CircularProgressIndicator())
-        : switch (_tab) {
-            _HomeTab.attendance => _buildAttendanceTab(isWide),
-            _HomeTab.toolbox => _ToolboxTab(
-              onRandomPick: _pickRandomPerson,
-              onOpenHistory: _openAttendanceHistory,
-              historyCount: _attendanceHistory.length,
-            ),
-            _HomeTab.settings => _SettingsTab(
-              hasPeople: _people.isNotEmpty,
-              scheduleName: _wakeUpSchedule?.name,
-              lastModifiedLabel: _lastModifiedLabel,
-              hapticEnabled: _hapticEnabled,
-              hapticSupported: Haptic.isSupported,
-              onHapticChanged: _setHapticEnabled,
-              onEditRoster: _openRosterEditor,
-              onImportRoster: _openImportPage,
-              onExportRoster: _exportRoster,
-              onCustomizeCopyFormat: _openCopyFormatPage,
-              onSyncSchedule: _syncWakeUpSchedule,
-              onBackupRestore: _openBackupRestore,
-            ),
-          };
+        : GestureDetector(
+            // translucent：横向滑动交给这里，纵向滚动与点按仍落到子组件上。
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: _handleHorizontalSwipe,
+            child: switch (_tab) {
+              _HomeTab.attendance => _buildAttendanceTab(isWide),
+              _HomeTab.toolbox => _ToolboxTab(
+                onRandomPick: _pickRandomPerson,
+                onOpenHistory: _openAttendanceHistory,
+                historyCount: _attendanceHistory.length,
+              ),
+              _HomeTab.settings => _SettingsTab(
+                hasPeople: _people.isNotEmpty,
+                scheduleName: _wakeUpSchedule?.name,
+                lastModifiedLabel: _lastModifiedLabel,
+                hapticEnabled: _hapticEnabled,
+                hapticSupported: Haptic.isSupported,
+                onHapticChanged: _setHapticEnabled,
+                onEditRoster: _openRosterEditor,
+                onImportRoster: _openImportPage,
+                onExportRoster: _exportRoster,
+                onCustomizeCopyFormat: _openCopyFormatPage,
+                onSyncSchedule: _syncWakeUpSchedule,
+                onBackupRestore: _openBackupRestore,
+              ),
+            },
+          );
     // 考勤页没有 AppBar，状态栏图标的明暗得自己声明，否则深色主题下可能
     // 沿用系统主题的深色图标，贴在深色背景上看不见（有 AppBar 的 Tab 由它覆盖）。
     return AnnotatedRegion<SystemUiOverlayStyle>(

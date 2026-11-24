@@ -74,6 +74,14 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    // androidx datastore 自带的 libdatastore_shared_counter.so 在新版 AGP/NDK 下会让
+    // stripDebugSymbols 报“找不到文件”而中断构建；保留其调试符号（不 strip）即可绕开。
+    packaging {
+        jniLibs {
+            keepDebugSymbols += "**/libdatastore_shared_counter.so"
+        }
+    }
 }
 
 kotlin {

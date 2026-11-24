@@ -1,6 +1,6 @@
 import 'package:callrool_app/services/wakeup_schedule_service.dart';
 import 'package:callrool_app/widgets/wakeup_schedule_dialog.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _shareData = '''

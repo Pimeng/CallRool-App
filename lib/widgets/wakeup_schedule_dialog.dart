@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../models/course_schedule.dart';
 import '../services/quick_import/quick_import_backend.dart';
