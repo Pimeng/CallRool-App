@@ -2876,7 +2876,7 @@ class _RollCallPageState extends State<RollCallPage>
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: GlassCard(
+          child: GlassContainer(
             useOwnLayer: true,
             quality: GlassQuality.standard,
             shape: const LiquidRoundedRectangle(borderRadius: 20),

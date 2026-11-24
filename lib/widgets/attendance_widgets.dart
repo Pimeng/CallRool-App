@@ -367,7 +367,7 @@ class EmptyState extends StatelessWidget {
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: GlassCard(
+              child: GlassContainer(
                 useOwnLayer: true,
                 quality: GlassQuality.standard,
                 shape: const LiquidRoundedRectangle(borderRadius: 24),
